@@ -7,8 +7,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
+import androidx.preference.PreferenceManager
 import com.homepantry.data.database.HomePantryDatabase
 import com.homepantry.data.repository.*
 import com.homepantry.navigation.AppNavigation
@@ -21,6 +23,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Initialize shared preferences
+        val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(this)
 
         // Initialize database
         database = HomePantryDatabase.getDatabase(applicationContext)
@@ -41,7 +46,13 @@ class MainActivity : ComponentActivity() {
         val recipeViewModel = RecipeViewModel(recipeRepository)
 
         setContent {
-            HomePantryTheme {
+            val darkTheme = remember {
+                mutableStateOf(
+                    sharedPreferences.getBoolean("dark_theme", false)
+                )
+            }
+
+            HomePantryTheme(darkTheme = darkTheme.value) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

@@ -15,9 +15,10 @@ import com.homepantry.data.entity.*
         RecipeInstruction::class,
         MealPlan::class,
         Category::class,
-        PantryItem::class
+        PantryItem::class,
+        RecipeRating::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 abstract class HomePantryDatabase : RoomDatabase() {
@@ -25,6 +26,7 @@ abstract class HomePantryDatabase : RoomDatabase() {
     abstract fun ingredientDao(): IngredientDao
     abstract fun mealPlanDao(): MealPlanDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun recipeRatingDao(): RecipeRatingDao
 
     companion object {
         private const val DATABASE_NAME = "homepantry.db"

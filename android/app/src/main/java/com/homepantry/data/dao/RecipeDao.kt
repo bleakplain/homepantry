@@ -58,4 +58,41 @@ interface RecipeDao {
 
     @Query("UPDATE recipes SET favoritePosition = :position WHERE id = :recipeId")
     suspend fun updateFavoritePosition(recipeId: String, position: Int?)
+
+    // Advanced search
+    @Query("""
+        SELECT * FROM recipes
+        WHERE cookingTime <= :maxTime
+        ORDER BY cookingTime ASC
+    """)
+    fun getRecipesByMaxCookingTime(maxTime: Int): Flow<List<Recipe>>
+
+    @Query("""
+        SELECT * FROM recipes
+        WHERE difficulty = :difficulty
+        ORDER BY createdAt DESC
+    """)
+    fun getRecipesByDifficulty(difficulty: String): Flow<List<Recipe>>
+
+    @Query("""
+        SELECT * FROM recipes
+        WHERE servings >= :minServings AND servings <= :maxServings
+        ORDER BY createdAt DESC
+    """)
+    fun getRecipesByServings(minServings: Int, maxServings: Int): Flow<List<Recipe>>
+
+    @Query("SELECT * FROM recipes ORDER BY name ASC")
+    fun getRecipesByNameAsc(): Flow<List<Recipe>>
+
+    @Query("SELECT * FROM recipes ORDER BY name DESC")
+    fun getRecipesByNameDesc(): Flow<List<Recipe>>
+
+    @Query("SELECT * FROM recipes ORDER BY cookingTime ASC")
+    fun getRecipesByCookingTimeAsc(): Flow<List<Recipe>>
+
+    @Query("SELECT * FROM recipes ORDER BY cookingTime DESC")
+    fun getRecipesByCookingTimeDesc(): Flow<List<Recipe>>
+
+    @Query("SELECT * FROM recipes ORDER BY createdAt ASC")
+    fun getRecipesByCreatedAtAsc(): Flow<List<Recipe>>
 }
