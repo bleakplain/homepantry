@@ -17,17 +17,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.homepantry.data.entity.IngredientCategory
 import com.homepantry.ui.theme.*
+import com.homepantry.viewmodel.IngredientViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IngredientScreen(
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    viewModel: IngredientViewModel = viewModel()
 ) {
     var selectedTab by remember { mutableStateOf(IngredientTab.PANTRY) }
-    val pantryItems = remember { mutableStateListOf<PantryItemUi>() }
-    val allIngredients = remember { mutableStateListOf<IngredientUi>() }
+    val pantryItems by viewModel.pantryItems.collectAsState()
+    val allIngredients by viewModel.allIngredients.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
+
+    var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -46,12 +53,14 @@ fun IngredientScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
-                onClick = { /* TODO: Add ingredient dialog */ },
-                containerColor = Primary,
-                contentColor = OnPrimary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "添加食材")
+            if (selectedTab == IngredientTab.PANTRY) {
+                FloatingActionButton(
+                    onClick = { showAddDialog = true },
+                    containerColor = Primary,
+                    contentColor = OnPrimary
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "添加食材")
+                }
             }
         }
     ) { paddingValues ->
@@ -75,12 +84,54 @@ fun IngredientScreen(
                 }
             }
 
+            // Error message
+            error?.let {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = it,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+
+            // Loading indicator
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Primary)
+                }
+            }
+
             when (selectedTab) {
-                IngredientTab.PANTRY -> PantryContent(items = pantryItems)
+                IngredientTab.PANTRY -> PantryContent(
+                    items = pantryItems,
+                    onDelete = { viewModel.deletePantryItem(it) }
+                )
                 IngredientTab.INGREDIENTS -> IngredientsList(ingredients = allIngredients)
                 IngredientTab.RECOMMENDATIONS -> RecommendationsContent()
             }
         }
+    }
+
+    if (showAddDialog) {
+        AddPantryItemDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name, quantity, unit, expiryDays ->
+                viewModel.addPantryItem(name, quantity, unit, expiryDays)
+                showAddDialog = false
+            }
+        )
     }
 }
 
@@ -91,7 +142,10 @@ enum class IngredientTab(val displayName: String) {
 }
 
 @Composable
-fun PantryContent(items: List<PantryItemUi>) {
+fun PantryContent(
+    items: List<PantryItemUi>,
+    onDelete: (String) -> Unit
+) {
     if (items.isEmpty()) {
         EmptyPantryState()
     } else {
@@ -100,34 +154,38 @@ fun PantryContent(items: List<PantryItemUi>) {
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            item {
-                Card(
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = AccentRed.copy(alpha = 0.1f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(text = "⚠️", style = MaterialTheme.typography.titleMedium)
-                        Text(
-                            text = "2个食材即将过期",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = AccentRed
+            // Show expiry warning if needed
+            val expiringCount = items.count { (it.expiryDays ?: 0) <= 3 }
+            if (expiringCount > 0) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = AccentRed.copy(alpha = 0.1f)
                         )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "⚠️", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                text = "$expiringCount 个食材即将过期",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = AccentRed
+                            )
+                        }
                     }
                 }
             }
 
-            items(items) { item ->
+            items(items, key = { it.id }) { item ->
                 PantryItemCard(
                     item = item,
-                    onDelete = { /* TODO */ }
+                    onDelete = { onDelete(item.id) }
                 )
             }
         }
@@ -350,3 +408,80 @@ private val IngredientCategory.displayName: String
         IngredientCategory.SAUCE -> "酱料"
         IngredientCategory.OTHER -> "其他"
     }
+
+@Composable
+fun AddPantryItemDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, Double, String, Int?) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var quantity by remember { mutableStateOf("") }
+    var unit by remember { mutableStateOf("") }
+    var expiryDays by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("添加食材") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("食材名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = quantity,
+                        onValueChange = { quantity = it },
+                        label = { Text("数量") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = unit,
+                        onValueChange = { unit = it },
+                        label = { Text("单位") },
+                        singleLine = true,
+                        placeholder = { Text("如:克,毫升") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                OutlinedTextField(
+                    value = expiryDays,
+                    onValueChange = { expiryDays = it },
+                    label = { Text("保质期(天)") },
+                    singleLine = true,
+                    placeholder = { Text("可选") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(
+                        name,
+                        quantity.toDoubleOrNull() ?: 0.0,
+                        unit,
+                        expiryDays.toIntOrNull()
+                    )
+                },
+                enabled = name.isNotBlank() && quantity.isNotBlank()
+            ) {
+                Text("添加")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
+}

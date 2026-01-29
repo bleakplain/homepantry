@@ -21,19 +21,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.homepantry.data.entity.DifficultyLevel
 import com.homepantry.data.entity.Recipe
 import com.homepantry.ui.theme.*
+import com.homepantry.viewmodel.RecipeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeListScreen(
     onRecipeClick: (String) -> Unit,
     onAddRecipeClick: () -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    viewModel: RecipeViewModel = viewModel()
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val recipes = remember { mutableStateListOf<Recipe>() }
+    val recipes by viewModel.recipes.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
+
+    LaunchedEffect(Unit) {
+        // Recipes are loaded automatically in ViewModel init
+    }
 
     Scaffold(
         topBar = {
@@ -72,7 +81,10 @@ fun RecipeListScreen(
             // Search Bar
             OutlinedTextField(
                 value = searchQuery,
-                onValueChange = { searchQuery = it },
+                onValueChange = {
+                    searchQuery = it
+                    viewModel.searchRecipes(it)
+                },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = {
                     Text("搜索菜谱...", color = OnSurfaceVariant)
@@ -98,44 +110,71 @@ fun RecipeListScreen(
             ) {
                 FilterChip(
                     selected = true,
-                    onClick = {},
+                    onClick = { viewModel.searchRecipes("") },
                     label = { Text("全部") },
                     shape = RoundedCornerShape(20.dp)
                 )
                 FilterChip(
                     selected = false,
-                    onClick = {},
+                    onClick = { viewModel.searchRecipes("家常") },
                     label = { Text("家常菜") },
                     shape = RoundedCornerShape(20.dp)
                 )
                 FilterChip(
                     selected = false,
-                    onClick = {},
+                    onClick = { viewModel.searchRecipes("汤") },
                     label = { Text("汤品") },
                     shape = RoundedCornerShape(20.dp)
                 )
                 FilterChip(
                     selected = false,
-                    onClick = {},
+                    onClick = { viewModel.searchRecipes("甜点") },
                     label = { Text("甜点") },
                     shape = RoundedCornerShape(20.dp)
                 )
             }
 
-            // Recipe List
-            if (recipes.isEmpty()) {
-                EmptyRecipesState(
-                    onAddRecipeClick = onAddRecipeClick
-                )
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+            // Error message
+            error?.let {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    items(recipes) { recipe ->
-                        RecipeCard(
-                            recipe = recipe,
-                            onClick = { onRecipeClick(recipe.id) }
-                        )
+                    Text(
+                        text = it,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+
+            // Content
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = Primary)
+                    }
+                }
+                recipes.isEmpty() -> {
+                    EmptyRecipesState(
+                        onAddRecipeClick = onAddRecipeClick
+                    )
+                }
+                else -> {
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(recipes, key = { it.id }) { recipe ->
+                            RecipeCard(
+                                recipe = recipe,
+                                onClick = { onRecipeClick(recipe.id) }
+                            )
+                        }
                     }
                 }
             }

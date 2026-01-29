@@ -16,16 +16,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.homepantry.data.entity.DifficultyLevel
 import com.homepantry.data.entity.RecipeIngredient
 import com.homepantry.data.entity.RecipeInstruction
 import com.homepantry.ui.theme.*
+import com.homepantry.viewmodel.RecipeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddRecipeScreen(
     onSave: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    viewModel: RecipeViewModel = viewModel()
 ) {
     var recipeName by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -35,6 +38,17 @@ fun AddRecipeScreen(
 
     val ingredients = remember { mutableStateListOf<RecipeIngredient>() }
     val instructions = remember { mutableStateListOf<String>() }
+
+    var error by remember { mutableStateOf<String?>(null) }
+    val isLoading by viewModel.isLoading.collectAsState()
+    val successMessage by viewModel.successMessage.collectAsState()
+
+    LaunchedEffect(successMessage.value) {
+        if (successMessage.value != null) {
+            onSave()
+            viewModel.clearSuccessMessage()
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -83,7 +97,15 @@ fun AddRecipeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("菜谱名称") },
                             shape = RoundedCornerShape(12.dp),
-                            singleLine = true
+                            singleLine = true,
+                            isError = recipeName.length in 1..49,
+                            supportingText = {
+                                if (recipeName.length < 2 && recipeName.isNotEmpty()) {
+                                    Text("菜谱名称至少需要2个字符", color = MaterialTheme.colorScheme.error)
+                                } else if (recipeName.length > 50) {
+                                    Text("菜谱名称不能超过50个字符", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
                         )
 
                         OutlinedTextField(
@@ -102,19 +124,39 @@ fun AddRecipeScreen(
                         ) {
                             OutlinedTextField(
                                 value = cookingTime,
-                                onValueChange = { cookingTime = it },
+                                onValueChange = {
+                                    if (it.all { char -> char.isDigit() } || it.isEmpty()) {
+                                        cookingTime = it
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                                 label = { Text("烹饪时间(分钟)") },
                                 shape = RoundedCornerShape(12.dp),
-                                singleLine = true
+                                singleLine = true,
+                                isError = cookingTime.isNotEmpty() && (cookingTime.toIntOrNull() == null || cookingTime.toIntOrNull()!! <= 0),
+                                supportingText = {
+                                    if (cookingTime.isNotEmpty() && (cookingTime.toIntOrNull() == null || cookingTime.toIntOrNull()!! <= 0)) {
+                                        Text("请输入有效的时间", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
                             )
                             OutlinedTextField(
                                 value = servings,
-                                onValueChange = { servings = it },
+                                onValueChange = {
+                                    if (it.all { char -> char.isDigit() } || it.isEmpty()) {
+                                        servings = it
+                                    }
+                                },
                                 modifier = Modifier.weight(1f),
                                 label = { Text("份数") },
                                 shape = RoundedCornerShape(12.dp),
-                                singleLine = true
+                                singleLine = true,
+                                isError = servings.isNotEmpty() && (servings.toIntOrNull() == null || servings.toIntOrNull()!! <= 0 || servings.toIntOrNull()!! > 100),
+                                supportingText = {
+                                    if (servings.isNotEmpty() && (servings.toIntOrNull() == null || servings.toIntOrNull()!! <= 0 || servings.toIntOrNull()!! > 100)) {
+                                        Text("请输入1-100之间的数字", color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
                             )
                         }
 
@@ -149,6 +191,7 @@ fun AddRecipeScreen(
                             TextButton(onClick = {
                                 ingredients.add(
                                     RecipeIngredient(
+                                        id = System.currentTimeMillis().toString(),
                                         recipeId = "",
                                         ingredientId = "",
                                         quantity = 0.0
@@ -247,17 +290,90 @@ fun AddRecipeScreen(
                 }
             }
 
+            // Error message
+            if (error != null) {
+                item {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = error!!,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
             // Save Button
             item {
                 Button(
-                    onClick = onSave,
+                    onClick = {
+                        // Validate inputs
+                        if (recipeName.length < 2) {
+                            error = "菜谱名称至少需要2个字符"
+                            return@Button
+                        }
+                        if (recipeName.length > 50) {
+                            error = "菜谱名称不能超过50个字符"
+                            return@Button
+                        }
+                        val time = cookingTime.toIntOrNull()
+                        if (time == null || time <= 0) {
+                            error = "请输入有效的烹饪时间"
+                            return@Button
+                        }
+                        val servingCount = servings.toIntOrNull()
+                        if (servingCount == null || servingCount <= 0) {
+                            error = "请输入有效的份数"
+                            return@Button
+                        }
+
+                        // Validate ingredient quantities
+                        val invalidIngredients = ingredients.filter {
+                            it.quantity <= 0 || it.ingredientId.isBlank()
+                        }
+                        if (invalidIngredients.isNotEmpty()) {
+                            error = "请确保所有食材都有名称和有效的数量"
+                            return@Button
+                        }
+
+                        error = null
+                        viewModel.addRecipe(
+                            name = recipeName,
+                            description = description.ifBlank { null },
+                            cookingTime = time,
+                            servings = servingCount,
+                            difficulty = difficulty,
+                            ingredients = ingredients.toList(),
+                            instructions = instructions.mapIndexed { index, text ->
+                                RecipeInstruction(
+                                    id = System.currentTimeMillis().toString() + index,
+                                    recipeId = "",
+                                    stepNumber = index + 1,
+                                    instructionText = text
+                                )
+                            }
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Primary
                     ),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    enabled = !isLoading
                 ) {
-                    Text("保存菜谱", style = MaterialTheme.typography.titleMedium)
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = OnPrimary
+                        )
+                    } else {
+                        Text("保存菜谱", style = MaterialTheme.typography.titleMedium)
+                    }
                 }
             }
 

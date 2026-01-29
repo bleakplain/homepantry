@@ -13,18 +13,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.homepantry.data.entity.MealType
 import com.homepantry.ui.theme.*
+import com.homepantry.viewmodel.MealPlanViewModel
 import java.text.SimpleDateFormat
 import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MealPlanScreen(
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    viewModel: MealPlanViewModel = viewModel()
 ) {
     var selectedDate by remember { mutableStateOf(Date()) }
-    val calendar = Calendar.getInstance()
+    val mealPlans by viewModel.mealPlans.collectAsState()
+    val availableRecipes by viewModel.availableRecipes.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
+    val error by viewModel.error.collectAsState()
+
+    LaunchedEffect(selectedDate) {
+        viewModel.selectDate(selectedDate)
+    }
 
     Scaffold(
         topBar = {
@@ -49,14 +59,52 @@ fun MealPlanScreen(
                 .background(Background)
                 .padding(paddingValues)
         ) {
+            // Error message
+            error?.let {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        text = it,
+                        modifier = Modifier.padding(16.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+
             // Week Calendar
             WeekCalendar(
                 selectedDate = selectedDate,
-                onDateSelected = { selectedDate = it }
+                onDateSelected = {
+                    selectedDate = it
+                    viewModel.selectDate(it)
+                }
             )
 
             // Meal Plan for Selected Day
-            DayMealPlan(date = selectedDate)
+            if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Primary)
+                }
+            } else {
+                DayMealPlan(
+                    date = selectedDate,
+                    mealPlans = mealPlans[selectedDate] ?: emptyList(),
+                    availableRecipes = availableRecipes,
+                    onMealPlanClick = { mealType ->
+                        // TODO: Show meal plan editor
+                    }
+                )
+            }
         }
     }
 }
@@ -153,7 +201,12 @@ fun DaySelector(
 }
 
 @Composable
-fun DayMealPlan(date: Date) {
+fun DayMealPlan(
+    date: Date,
+    mealPlans: List<com.homepantry.viewmodel.MealPlanUi>,
+    availableRecipes: List<com.homepantry.data.entity.Recipe>,
+    onMealPlanClick: (MealType) -> Unit
+) {
     val dateFormat = SimpleDateFormat("MM月dd日 EEEE", Locale.CHINA)
     val formattedDate = dateFormat.format(date)
 
@@ -171,41 +224,55 @@ fun DayMealPlan(date: Date) {
             )
         }
 
+        // Breakfast
         item {
+            val breakfastPlan = mealPlans.find { it.mealType == MealType.BREAKFAST }
             MealTypeSection(
                 mealType = MealType.BREAKFAST,
                 title = "早餐",
                 icon = "🌅",
-                hasPlan = false
+                hasPlan = breakfastPlan != null,
+                recipeName = breakfastPlan?.recipeName,
+                onClick = { onMealPlanClick(MealType.BREAKFAST) }
             )
         }
 
+        // Lunch
         item {
+            val lunchPlan = mealPlans.find { it.mealType == MealType.LUNCH }
             MealTypeSection(
                 mealType = MealType.LUNCH,
                 title = "午餐",
                 icon = "☀️",
-                hasPlan = true,
-                recipeName = "番茄炒蛋"
+                hasPlan = lunchPlan != null,
+                recipeName = lunchPlan?.recipeName,
+                onClick = { onMealPlanClick(MealType.LUNCH) }
             )
         }
 
+        // Dinner
         item {
+            val dinnerPlan = mealPlans.find { it.mealType == MealType.DINNER }
             MealTypeSection(
                 mealType = MealType.DINNER,
                 title = "晚餐",
                 icon = "🌙",
-                hasPlan = true,
-                recipeName = "红烧肉"
+                hasPlan = dinnerPlan != null,
+                recipeName = dinnerPlan?.recipeName,
+                onClick = { onMealPlanClick(MealType.DINNER) }
             )
         }
 
+        // Snack
         item {
+            val snackPlan = mealPlans.find { it.mealType == MealType.SNACK }
             MealTypeSection(
                 mealType = MealType.SNACK,
                 title = "加餐",
                 icon = "🍎",
-                hasPlan = false
+                hasPlan = snackPlan != null,
+                recipeName = snackPlan?.recipeName,
+                onClick = { onMealPlanClick(MealType.SNACK) }
             )
         }
     }
@@ -218,10 +285,11 @@ fun MealTypeSection(
     title: String,
     icon: String,
     hasPlan: Boolean,
-    recipeName: String? = null
+    recipeName: String? = null,
+    onClick: () -> Unit
 ) {
     Card(
-        onClick = { /* TODO: Open meal plan editor */ },
+        onClick = onClick,
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (hasPlan) Surface else SurfaceVariant
