@@ -48,4 +48,14 @@ interface RecipeDao {
 
     @Query("DELETE FROM recipe_instructions WHERE recipeId = :recipeId")
     suspend fun deleteRecipeInstructions(recipeId: String)
+
+    // Favorites
+    @Query("SELECT * FROM recipes WHERE isFavorite = 1 ORDER BY favoritePosition ASC, createdAt DESC")
+    fun getFavoriteRecipes(): Flow<List<Recipe>>
+
+    @Query("UPDATE recipes SET isFavorite = :isFavorite WHERE id = :recipeId")
+    suspend fun updateFavoriteStatus(recipeId: String, isFavorite: Boolean)
+
+    @Query("UPDATE recipes SET favoritePosition = :position WHERE id = :recipeId")
+    suspend fun updateFavoritePosition(recipeId: String, position: Int?)
 }

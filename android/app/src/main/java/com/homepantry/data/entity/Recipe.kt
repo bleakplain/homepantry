@@ -17,7 +17,9 @@ data class Recipe(
     val categoryId: String? = null,
     val tags: String = "", // JSON array as string
     val createdAt: Long = System.currentTimeMillis(),
-    val createdBy: String? = null // Family member ID
+    val createdBy: String? = null, // Family member ID
+    val isFavorite: Boolean = false,
+    val favoritePosition: Int? = null // For custom ordering
 )
 
 enum class DifficultyLevel {

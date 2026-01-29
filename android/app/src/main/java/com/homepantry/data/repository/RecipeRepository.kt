@@ -55,6 +55,18 @@ class RecipeRepository(
         return RecipeWithDetails(recipe, ingredients, instructions)
     }
 
+    // Favorites
+    fun getFavoriteRecipes(): Flow<List<Recipe>> = recipeDao.getFavoriteRecipes()
+
+    suspend fun toggleFavorite(recipeId: String) {
+        val recipe = recipeDao.getRecipeById(recipeId) ?: return
+        recipeDao.updateFavoriteStatus(recipeId, !recipe.isFavorite)
+    }
+
+    suspend fun setFavoriteStatus(recipeId: String, isFavorite: Boolean) {
+        recipeDao.updateFavoriteStatus(recipeId, isFavorite)
+    }
+
     data class RecipeWithDetails(
         val recipe: Recipe,
         val ingredients: List<RecipeIngredient>,
