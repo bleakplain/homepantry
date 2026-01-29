@@ -3,9 +3,11 @@ package com.homepantry.ui.mealplan
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +33,7 @@ fun MealPlanScreen(
     val availableRecipes by viewModel.availableRecipes.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     val error by viewModel.error.collectAsState()
+    var showShoppingList by remember { mutableStateOf(false) }
 
     LaunchedEffect(selectedDate) {
         viewModel.selectDate(selectedDate)
@@ -45,10 +48,20 @@ fun MealPlanScreen(
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
                     }
                 },
+                actions = {
+                    IconButton(onClick = { showShoppingList = true }) {
+                        Icon(
+                            Icons.Default.ShoppingCart,
+                            contentDescription = "购物清单",
+                            tint = OnPrimary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Primary,
                     titleContentColor = OnPrimary,
-                    navigationIconContentColor = OnPrimary
+                    navigationIconContentColor = OnPrimary,
+                    actionIconContentColor = OnPrimary
                 )
             )
         }
@@ -106,6 +119,16 @@ fun MealPlanScreen(
                 )
             }
         }
+    }
+
+    if (showShoppingList) {
+        ShoppingListDialog(
+            onDismiss = { showShoppingList = false },
+            onShare = {
+                // TODO: Share shopping list
+                showShoppingList = false
+            }
+        )
     }
 }
 
@@ -345,3 +368,94 @@ fun isSameDay(date1: Date, date2: Date): Boolean {
     return cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
            cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
 }
+
+@Composable
+fun ShoppingListDialog(
+    onDismiss: () -> Unit,
+    onShare: () -> Unit
+) {
+    // Mock shopping list data
+    val shoppingItems = remember {
+        listOf(
+            ShoppingItemUi("番茄", "500克", "3个需要"),
+            ShoppingItemUi("鸡蛋", "6个", "6个需要"),
+            ShoppingItemUi("食用油", "500毫升", "已充足"),
+            ShoppingItemUi("盐", "适量", "已充足")
+        )
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "🛒 购物清单",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "本周购物清单",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = OnSurfaceVariant
+                )
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                LazyColumn(
+                    modifier = Modifier.height(300.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(shoppingItems) { item ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = item.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = item.status,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (item.status.contains("需要")) AccentRed else AccentGreen
+                                )
+                            }
+                            Text(
+                                text = item.quantity,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = OnSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onShare,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Primary
+                )
+            ) {
+                Text("分享清单")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        }
+    )
+}
+
+data class ShoppingItemUi(
+    val name: String,
+    val quantity: String,
+    val status: String
+)

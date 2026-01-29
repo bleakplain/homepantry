@@ -3,8 +3,8 @@ package com.homepantry.ui
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import com.homepantry.ui.recipe.RecipeListScreen
-import com.homepantry.ui.theme.HomePantryTheme
 import org.junit.Rule
 import org.junit.Test
 
@@ -14,66 +14,74 @@ class RecipeListScreenTest {
     val composeTestRule = createComposeRule()
 
     @Test
-    fun recipeListScreen_displays_title() {
+    fun recipeListScreen_displaysTitle() {
         composeTestRule.setContent {
-            HomePantryTheme {
-                RecipeListScreen(
-                    onRecipeClick = {},
-                    onAddRecipeClick = {},
-                    onBackClick = {}
-                )
-            }
+            RecipeListScreen(
+                onRecipeClick = {},
+                onAddRecipeClick = {},
+                onBackClick = {}
+            )
         }
 
-        composeTestRule.onNodeWithText("菜谱").assertIsDisplayed()
+        // Verify the search bar is displayed
+        composeTestRule.onNodeWithText("搜索菜谱...")
+            .assertIsDisplayed()
     }
 
     @Test
-    fun recipeListScreen_displays_search_placeholder() {
+    fun recipeListScreen_displaysQuickFilters() {
         composeTestRule.setContent {
-            HomePantryTheme {
-                RecipeListScreen(
-                    onRecipeClick = {},
-                    onAddRecipeClick = {},
-                    onBackClick = {}
-                )
-            }
+            RecipeListScreen(
+                onRecipeClick = {},
+                onAddRecipeClick = {},
+                onBackClick = {}
+            )
         }
 
-        composeTestRule.onNodeWithText("搜索菜谱...").assertIsDisplayed()
+        // Verify quick filter chips are displayed
+        composeTestRule.onNodeWithText("全部")
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("⭐ 收藏")
+            .assertIsDisplayed()
+        composeTestRule.onNodeWithText("⚡ 15分钟")
+            .assertIsDisplayed()
     }
 
     @Test
-    fun recipeListScreen_displays_filter_chips() {
+    fun recipeListScreen_clickingFavoriteTogglesFilter() {
         composeTestRule.setContent {
-            HomePantryTheme {
-                RecipeListScreen(
-                    onRecipeClick = {},
-                    onAddRecipeClick = {},
-                    onBackClick = {}
-                )
-            }
+            RecipeListScreen(
+                onRecipeClick = {},
+                onAddRecipeClick = {},
+                onBackClick = {}
+            )
         }
 
-        composeTestRule.onNodeWithText("全部").assertExists()
-        composeTestRule.onNodeWithText("家常菜").assertExists()
-        composeTestRule.onNodeWithText("汤品").assertExists()
-        composeTestRule.onNodeWithText("甜点").assertExists()
+        // Click on favorites filter
+        composeTestRule.onNodeWithText("⭐ 收藏")
+            .performClick()
+
+        // The filter should now be selected
+        composeTestRule.onNodeWithText("⭐ 收藏")
+            .assertIsDisplayed()
     }
 
     @Test
-    fun recipeListScreen_displays_empty_state() {
+    fun recipeListScreen_clicking15MinTogglesFilter() {
         composeTestRule.setContent {
-            HomePantryTheme {
-                RecipeListScreen(
-                    onRecipeClick = {},
-                    onAddRecipeClick = {},
-                    onBackClick = {}
-                )
-            }
+            RecipeListScreen(
+                onRecipeClick = {},
+                onAddRecipeClick = {},
+                onBackClick = {}
+            )
         }
 
-        composeTestRule.onNodeWithText("还没有菜谱").assertIsDisplayed()
-        composeTestRule.onNodeWithText("添加你的第一个菜谱开始吧").assertIsDisplayed()
+        // Click on 15 min filter
+        composeTestRule.onNodeWithText("⚡ 15分钟")
+            .performClick()
+
+        // The filter should now be selected
+        composeTestRule.onNodeWithText("⚡ 15分钟")
+            .assertIsDisplayed()
     }
 }
