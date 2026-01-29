@@ -5,9 +5,11 @@ import androidx.compose.ui.Modifier
 
 @Composable
 fun EditRecipeScreen(
+    recipeId: String? = null,
     onSave: () -> Unit,
     onCancel: () -> Unit
 ) {
-    // Reuse AddRecipeScreen logic with pre-filled data
+    // TODO: Load recipe data and pre-fill the form
+    // For now, reuse AddRecipeScreen
     AddRecipeScreen(onSave = onSave, onCancel = onCancel)
 }

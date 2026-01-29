@@ -26,10 +26,13 @@ import com.homepantry.ui.theme.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipeDetailScreen(
+    recipeId: String? = null,
     onEditClick: (String) -> Unit,
     onBackClick: () -> Unit
 ) {
     var isFavorite by remember { mutableStateOf(false) }
+    // TODO: Load recipe data based on recipeId
+    val currentRecipeId = recipeId ?: "recipe-id"
 
     Scaffold(
         topBar = {
@@ -48,7 +51,7 @@ fun RecipeDetailScreen(
                             tint = if (isFavorite) AccentRed else OnPrimary
                         )
                     }
-                    IconButton(onClick = { onEditClick("recipe-id") }) {
+                    IconButton(onClick = { onEditClick(currentRecipeId) }) {
                         Icon(Icons.Default.Edit, contentDescription = "编辑")
                     }
                 },

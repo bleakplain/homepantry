@@ -25,6 +25,12 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _successMessage = MutableStateFlow<String?>(null)
+    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
+
     init {
         loadRecipes()
     }
@@ -32,8 +38,13 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
     private fun loadRecipes() {
         viewModelScope.launch {
             _isLoading.value = true
-            repository.getAllRecipes().collect { recipeList ->
-                _recipes.value = recipeList
+            try {
+                repository.getAllRecipes().collect { recipeList ->
+                    _recipes.value = recipeList
+                    _isLoading.value = false
+                }
+            } catch (e: Exception) {
+                _error.value = "加载菜谱失败: ${e.message}"
                 _isLoading.value = false
             }
         }
@@ -72,14 +83,22 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
         instructions: List<RecipeInstruction>
     ) {
         viewModelScope.launch {
-            val recipe = Recipe(
-                name = name,
-                description = description,
-                cookingTime = cookingTime,
-                servings = servings,
-                difficulty = difficulty
-            )
-            repository.insertRecipeWithDetails(recipe, ingredients, instructions)
+            try {
+                _isLoading.value = true
+                val recipe = Recipe(
+                    name = name,
+                    description = description,
+                    cookingTime = cookingTime,
+                    servings = servings,
+                    difficulty = difficulty
+                )
+                repository.insertRecipeWithDetails(recipe, ingredients, instructions)
+                _successMessage.value = "菜谱添加成功"
+                _isLoading.value = false
+            } catch (e: Exception) {
+                _error.value = "添加菜谱失败: ${e.message}"
+                _isLoading.value = false
+            }
         }
     }
 
@@ -89,13 +108,37 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
         instructions: List<RecipeInstruction>
     ) {
         viewModelScope.launch {
-            repository.updateRecipeWithDetails(recipe, ingredients, instructions)
+            try {
+                _isLoading.value = true
+                repository.updateRecipeWithDetails(recipe, ingredients, instructions)
+                _successMessage.value = "菜谱更新成功"
+                _isLoading.value = false
+            } catch (e: Exception) {
+                _error.value = "更新菜谱失败: ${e.message}"
+                _isLoading.value = false
+            }
         }
     }
 
     fun deleteRecipe(recipe: Recipe) {
         viewModelScope.launch {
-            repository.deleteRecipe(recipe)
+            try {
+                _isLoading.value = true
+                repository.deleteRecipe(recipe)
+                _successMessage.value = "菜谱删除成功"
+                _isLoading.value = false
+            } catch (e: Exception) {
+                _error.value = "删除菜谱失败: ${e.message}"
+                _isLoading.value = false
+            }
         }
+    }
+
+    fun clearError() {
+        _error.value = null
+    }
+
+    fun clearSuccessMessage() {
+        _successMessage.value = null
     }
 }

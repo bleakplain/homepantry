@@ -61,8 +61,10 @@ fun AppNavigation(
         composable(
             route = Screen.RecipeDetail.route,
             arguments = listOf(navArgument("recipeId") { type = NavType.StringType })
-        ) {
+        ) { backStackEntry ->
+            val recipeId = backStackEntry.arguments?.getString("recipeId")
             RecipeDetailScreen(
+                recipeId = recipeId,
                 onEditClick = { recipeId ->
                     navController.navigate(Screen.EditRecipe.createRoute(recipeId))
                 },
@@ -80,8 +82,10 @@ fun AppNavigation(
         composable(
             route = Screen.EditRecipe.route,
             arguments = listOf(navArgument("recipeId") { type = NavType.StringType })
-        ) {
+        ) { backStackEntry ->
+            val recipeId = backStackEntry.arguments?.getString("recipeId")
             EditRecipeScreen(
+                recipeId = recipeId,
                 onSave = { navController.navigateUp() },
                 onCancel = { navController.navigateUp() }
             )
