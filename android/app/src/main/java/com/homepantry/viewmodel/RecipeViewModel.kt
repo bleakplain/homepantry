@@ -1,6 +1,5 @@
 package com.homepantry.viewmodel
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homepantry.data.entity.Recipe
 import com.homepantry.data.entity.RecipeIngredient
@@ -9,9 +8,8 @@ import com.homepantry.data.repository.RecipeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
-class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
+class RecipeViewModel(private val repository: RecipeRepository) : BaseViewModel() {
 
     private val _recipes = MutableStateFlow<List<Recipe>>(emptyList())
     val recipes: StateFlow<List<Recipe>> = _recipes.asStateFlow()
@@ -22,30 +20,21 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
-
-    private val _successMessage = MutableStateFlow<String?>(null)
-    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
-
     init {
         loadRecipes()
     }
 
     private fun loadRecipes() {
         viewModelScope.launch {
-            _isLoading.value = true
+            setLoading(true)
             try {
                 repository.getAllRecipes().collect { recipeList ->
                     _recipes.value = recipeList
-                    _isLoading.value = false
+                    setLoading(false)
                 }
             } catch (e: Exception) {
-                _error.value = "加载菜谱失败: ${e.message}"
-                _isLoading.value = false
+                setError("加载菜谱失败: ${e.message}")
+                setLoading(false)
             }
         }
     }
@@ -55,7 +44,7 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
         if (query.isBlank()) {
             loadRecipes()
         } else {
-            viewModelScope.launch {
+            launchInBackground {
                 repository.searchRecipes(query).collect { results ->
                     _recipes.value = results
                 }
@@ -64,7 +53,7 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
     }
 
     fun selectRecipe(recipeId: String) {
-        viewModelScope.launch {
+        launchInBackground {
             _selectedRecipe.value = repository.getRecipeById(recipeId)
         }
     }
@@ -82,23 +71,15 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
         ingredients: List<RecipeIngredient>,
         instructions: List<RecipeInstruction>
     ) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val recipe = Recipe(
-                    name = name,
-                    description = description,
-                    cookingTime = cookingTime,
-                    servings = servings,
-                    difficulty = difficulty
-                )
-                repository.insertRecipeWithDetails(recipe, ingredients, instructions)
-                _successMessage.value = "菜谱添加成功"
-                _isLoading.value = false
-            } catch (e: Exception) {
-                _error.value = "添加菜谱失败: ${e.message}"
-                _isLoading.value = false
-            }
+        execute("菜谱添加成功") {
+            val recipe = Recipe(
+                name = name,
+                description = description,
+                cookingTime = cookingTime,
+                servings = servings,
+                difficulty = difficulty
+            )
+            repository.insertRecipeWithDetails(recipe, ingredients, instructions)
         }
     }
 
@@ -107,38 +88,14 @@ class RecipeViewModel(private val repository: RecipeRepository) : ViewModel() {
         ingredients: List<RecipeIngredient>,
         instructions: List<RecipeInstruction>
     ) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                repository.updateRecipeWithDetails(recipe, ingredients, instructions)
-                _successMessage.value = "菜谱更新成功"
-                _isLoading.value = false
-            } catch (e: Exception) {
-                _error.value = "更新菜谱失败: ${e.message}"
-                _isLoading.value = false
-            }
+        execute("菜谱更新成功") {
+            repository.updateRecipeWithDetails(recipe, ingredients, instructions)
         }
     }
 
     fun deleteRecipe(recipe: Recipe) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                repository.deleteRecipe(recipe)
-                _successMessage.value = "菜谱删除成功"
-                _isLoading.value = false
-            } catch (e: Exception) {
-                _error.value = "删除菜谱失败: ${e.message}"
-                _isLoading.value = false
-            }
+        execute("菜谱删除成功") {
+            repository.deleteRecipe(recipe)
         }
-    }
-
-    fun clearError() {
-        _error.value = null
-    }
-
-    fun clearSuccessMessage() {
-        _successMessage.value = null
     }
 }

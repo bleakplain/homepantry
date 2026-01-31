@@ -37,6 +37,8 @@ class IngredientRepository(
 
     suspend fun updatePantryItem(item: PantryItem) = ingredientDao.updatePantryItem(item)
 
+    suspend fun deletePantryItem(itemId: String) = ingredientDao.deletePantryItemById(itemId)
+
     suspend fun removePantryItem(item: PantryItem) = ingredientDao.deletePantryItem(item)
 
     suspend fun cleanExpiredItems() {

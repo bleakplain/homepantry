@@ -1,6 +1,5 @@
 package com.homepantry.viewmodel
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homepantry.data.entity.Ingredient
 import com.homepantry.data.entity.IngredientCategory
@@ -11,26 +10,16 @@ import com.homepantry.ui.ingredient.PantryItemUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 
 class IngredientViewModel(
     private val repository: IngredientRepository
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _pantryItems = MutableStateFlow<List<PantryItemUi>>(emptyList())
     val pantryItems: StateFlow<List<PantryItemUi>> = _pantryItems.asStateFlow()
 
     private val _allIngredients = MutableStateFlow<List<IngredientUi>>(emptyList())
     val allIngredients: StateFlow<List<IngredientUi>> = _allIngredients.asStateFlow()
-
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
-
-    private val _successMessage = MutableStateFlow<String?>(null)
-    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
 
     init {
         loadPantryItems()
@@ -39,27 +28,23 @@ class IngredientViewModel(
 
     private fun loadPantryItems() {
         viewModelScope.launch {
-            _isLoading.value = true
+            setLoading(true)
             try {
                 repository.getPantryItems().collect { items ->
                     _pantryItems.value = items.map { it.toPantryItemUi() }
-                    _isLoading.value = false
+                    setLoading(false)
                 }
             } catch (e: Exception) {
-                _error.value = "加载食材箱失败: ${e.message}"
-                _isLoading.value = false
+                setError("加载食材箱失败: ${e.message}")
+                setLoading(false)
             }
         }
     }
 
     private fun loadAllIngredients() {
-        viewModelScope.launch {
-            try {
-                repository.getAllIngredients().collect { ingredients ->
-                    _allIngredients.value = ingredients.map { it.toIngredientUi() }
-                }
-            } catch (e: Exception) {
-                _error.value = "加载食材库失败: ${e.message}"
+        launchInBackground {
+            repository.getAllIngredients().collect { ingredients ->
+                _allIngredients.value = ingredients.map { it.toIngredientUi() }
             }
         }
     }
@@ -70,50 +55,29 @@ class IngredientViewModel(
         unit: String,
         expiryDays: Int?
     ) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val ingredient = Ingredient(
-                    id = generateId(),
-                    name = name,
-                    unit = unit,
-                    category = IngredientCategory.OTHER
-                )
-                repository.addIngredient(ingredient)
+        execute("食材添加成功") {
+            val ingredient = Ingredient(
+                id = generateId(),
+                name = name,
+                unit = unit,
+                category = IngredientCategory.OTHER
+            )
+            repository.addIngredient(ingredient)
 
-                val pantryItem = PantryItem(
-                    id = generateId(),
-                    ingredientId = ingredient.id,
-                    quantity = quantity,
-                    expiryDate = expiryDays?.let { System.currentTimeMillis() + it * 24 * 60 * 60 * 1000L }
-                )
-                repository.addPantryItem(pantryItem)
-                _successMessage.value = "食材添加成功"
-                _isLoading.value = false
-            } catch (e: Exception) {
-                _error.value = "添加食材失败: ${e.message}"
-                _isLoading.value = false
-            }
+            val pantryItem = PantryItem(
+                id = generateId(),
+                ingredientId = ingredient.id,
+                quantity = quantity,
+                expiryDate = expiryDays?.let { System.currentTimeMillis() + it * 24 * 60 * 60 * 1000L }
+            )
+            repository.addPantryItem(pantryItem)
         }
     }
 
     fun deletePantryItem(itemId: String) {
-        viewModelScope.launch {
-            try {
-                repository.deletePantryItem(itemId)
-                _successMessage.value = "食材删除成功"
-            } catch (e: Exception) {
-                _error.value = "删除食材失败: ${e.message}"
-            }
+        execute("食材删除成功") {
+            repository.deletePantryItem(itemId)
         }
-    }
-
-    fun clearError() {
-        _error.value = null
-    }
-
-    fun clearSuccessMessage() {
-        _successMessage.value = null
     }
 
     private fun generateId(): String {

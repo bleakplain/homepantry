@@ -1,6 +1,5 @@
 package com.homepantry.viewmodel
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homepantry.data.entity.MealPlan
 import com.homepantry.data.entity.MealType
@@ -10,13 +9,12 @@ import com.homepantry.data.repository.RecipeRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import java.util.Date
 
 class MealPlanViewModel(
     private val mealPlanRepository: MealPlanRepository,
     private val recipeRepository: RecipeRepository
-) : ViewModel() {
+) : BaseViewModel() {
 
     private val _mealPlans = MutableStateFlow<Map<Date, List<MealPlanUi>>>(emptyMap())
     val mealPlans: StateFlow<Map<Date, List<MealPlanUi>>> = _mealPlans.asStateFlow()
@@ -27,15 +25,6 @@ class MealPlanViewModel(
     private val _selectedDate = MutableStateFlow(Date())
     val selectedDate: StateFlow<Date> = _selectedDate.asStateFlow()
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
-    private val _error = MutableStateFlow<String?>(null)
-    val error: StateFlow<String?> = _error.asStateFlow()
-
-    private val _successMessage = MutableStateFlow<String?>(null)
-    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
-
     init {
         loadMealPlans()
         loadRecipes()
@@ -43,7 +32,7 @@ class MealPlanViewModel(
 
     private fun loadMealPlans() {
         viewModelScope.launch {
-            _isLoading.value = true
+            setLoading(true)
             try {
                 mealPlanRepository.getMealPlansForWeek(
                     startDate = getWeekStartDate(_selectedDate.value)
@@ -53,23 +42,19 @@ class MealPlanViewModel(
                         .mapValues { entry ->
                             entry.value.map { plan -> plan.toMealPlanUi() }
                         }
-                    _isLoading.value = false
+                    setLoading(false)
                 }
             } catch (e: Exception) {
-                _error.value = "加载餐食计划失败: ${e.message}"
-                _isLoading.value = false
+                setError("加载餐食计划失败: ${e.message}")
+                setLoading(false)
             }
         }
     }
 
     private fun loadRecipes() {
-        viewModelScope.launch {
-            try {
-                recipeRepository.getAllRecipes().collect { recipes ->
-                    _availableRecipes.value = recipes
-                }
-            } catch (e: Exception) {
-                _error.value = "加载菜谱失败: ${e.message}"
+        launchInBackground {
+            recipeRepository.getAllRecipes().collect { recipes ->
+                _availableRecipes.value = recipes
             }
         }
     }
@@ -80,7 +65,7 @@ class MealPlanViewModel(
     }
 
     private fun loadMealPlansForDate(date: Date) {
-        viewModelScope.launch {
+        launchInBackground {
             try {
                 mealPlanRepository.getMealPlansForDate(date.time).collect { plans ->
                     val dayPlans = plans.map { it.toMealPlanUi() }
@@ -89,7 +74,7 @@ class MealPlanViewModel(
                     _mealPlans.value = current
                 }
             } catch (e: Exception) {
-                _error.value = "加载餐食计划失败: ${e.message}"
+                setError("加载餐食计划失败: ${e.message}")
             }
         }
     }
@@ -101,25 +86,17 @@ class MealPlanViewModel(
         servings: Int,
         notes: String?
     ) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                val mealPlan = MealPlan(
-                    id = generateId(),
-                    date = date.time,
-                    mealType = mealType,
-                    recipeId = recipeId,
-                    servings = servings,
-                    notes = notes
-                )
-                mealPlanRepository.addMealPlan(mealPlan)
-                _successMessage.value = "餐食计划添加成功"
-                _isLoading.value = false
-                loadMealPlansForDate(date)
-            } catch (e: Exception) {
-                _error.value = "添加餐食计划失败: ${e.message}"
-                _isLoading.value = false
-            }
+        execute("餐食计划添加成功") {
+            val mealPlan = MealPlan(
+                id = generateId(),
+                date = date.time,
+                mealType = mealType,
+                recipeId = recipeId,
+                servings = servings,
+                notes = notes
+            )
+            mealPlanRepository.addMealPlan(mealPlan)
+            loadMealPlansForDate(date)
         }
     }
 
@@ -129,51 +106,29 @@ class MealPlanViewModel(
         servings: Int,
         notes: String?
     ) {
-        viewModelScope.launch {
-            try {
-                _isLoading.value = true
-                // Get existing meal plan
-                val existing = mealPlanRepository.getMealPlanById(mealPlanId)
-                if (existing != null) {
-                    val updated = existing.copy(
-                        recipeId = recipeId,
-                        servings = servings,
-                        notes = notes
-                    )
-                    mealPlanRepository.updateMealPlan(updated)
-                    _successMessage.value = "餐食计划更新成功"
-                }
-                _isLoading.value = false
-                loadMealPlansForDate(_selectedDate.value)
-            } catch (e: Exception) {
-                _error.value = "更新餐食计划失败: ${e.message}"
-                _isLoading.value = false
+        execute("餐食计划更新成功") {
+            val existing = mealPlanRepository.getMealPlanById(mealPlanId)
+            if (existing != null) {
+                val updated = existing.copy(
+                    recipeId = recipeId,
+                    servings = servings,
+                    notes = notes
+                )
+                mealPlanRepository.updateMealPlan(updated)
             }
+            loadMealPlansForDate(_selectedDate.value)
         }
     }
 
     fun deleteMealPlan(mealPlanId: String) {
-        viewModelScope.launch {
-            try {
-                mealPlanRepository.deleteMealPlan(mealPlanId)
-                _successMessage.value = "餐食计划删除成功"
-                loadMealPlansForDate(_selectedDate.value)
-            } catch (e: Exception) {
-                _error.value = "删除餐食计划失败: ${e.message}"
-            }
+        execute("餐食计划删除成功") {
+            mealPlanRepository.deleteMealPlanById(mealPlanId)
+            loadMealPlansForDate(_selectedDate.value)
         }
     }
 
     fun getMealPlansForDateAndType(date: Date, mealType: MealType): List<MealPlanUi> {
         return _mealPlans.value[date]?.filter { it.mealType == mealType } ?: emptyList()
-    }
-
-    fun clearError() {
-        _error.value = null
-    }
-
-    fun clearSuccessMessage() {
-        _successMessage.value = null
     }
 
     private fun generateId(): String {
