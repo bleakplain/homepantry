@@ -1,142 +1,251 @@
 package com.homepantry.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.homepantry.data.dao.IngredientDao
-import com.homepantry.data.dao.CategoryDao
-import com.homepantry.data.entity.Ingredient
-import com.homepantry.data.entity.Category
-import kotlinx.coroutines.flow.*
+import com.homepantry.data.entity.RecipeFilter
+import com.homepantry.data.entity.RecipeFilterCriteria
+import com.homepantry.data.repository.RecipeFilterRepository
+import com.homepantry.utils.Logger
+import com.homepantry.utils.PerformanceMonitor
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 筛选对话框 ViewModel
+ * 筛选对话框视图模型
  */
 class FilterDialogViewModel(
-    private val ingredientDao: IngredientDao,
-    private val categoryDao: CategoryDao
+    private val recipeFilterId: String?,
+    private val recipeFilterRepository: RecipeFilterRepository
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "FilterDialogViewModel"
+    }
 
     private val _uiState = MutableStateFlow(FilterDialogUiState())
     val uiState: StateFlow<FilterDialogUiState> = _uiState.asStateFlow()
 
     init {
-        loadIngredients()
-        loadCategories()
+        Logger.d(TAG, "FilterDialogViewModel init for filter: $recipeFilterId")
+        loadFilter()
     }
 
     /**
-     * 加载所有食材
+     * 加载筛选器
      */
-    private fun loadIngredients() {
+    private fun loadFilter() {
         viewModelScope.launch {
-            try {
-                val ingredients = ingredientDao.getAllIngredients()
-                _uiState.update { it.copy(ingredients = ingredients) }
-            } catch (e: Exception) {
-                _uiState.update { state -> state.copy(error = "加载食材失败：${e.message}") }
-            }
-        }
-    }
+            _uiState.update { it.copy(isLoading = true) }
 
-    /**
-     * 加载所有分类
-     */
-    private fun loadCategories() {
-        viewModelScope.launch {
-            try {
-                val categories = categoryDao.getAllCategories()
-                _uiState.update { it.copy(categories = categories) }
-            } catch (e: Exception) {
-                _uiState.update { state -> state.copy(error = "加载分类失败：${e.message}") }
-            }
-        }
-    }
+            PerformanceMonitor.recordMethodPerformance("loadFilter") {
+                Logger.enter("FilterDialogViewModel.loadFilter", recipeFilterId)
 
-    /**
-     * 搜索食材
-     */
-    fun searchIngredients(query: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(searchQuery = query) }
-        }
-    }
-
-    /**
-     * 切换食材（包含/排除）
-     */
-    fun toggleIngredient(ingredientId: String, type: IngredientType) {
-        viewModelScope.launch {
-            val currentState = _uiState.value
-            
-            when (type) {
-                IngredientType.INCLUDED -> {
-                    val included = currentState.includedIngredientIds + ingredientId
-                    val excluded = currentState.excludedIngredientIds - ingredientId
-                    _uiState.update { it.copy(includedIngredientIds = included, excludedIngredientIds = excluded) }
+                if (recipeFilterId != null) {
+                    recipeFilterRepository.getFilterById(recipeFilterId)
+                        .collect { filter ->
+                            if (filter != null) {
+                                val criteria = RecipeFilter.toCriteria(filter)
+                                _uiState.update {
+                                    it.copy(
+                                        isLoading = false,
+                                        criteria = criteria
+                                    )
+                                }
+                                Logger.d(TAG, "加载筛选器成功：${filter.id}")
+                            } else {
+                                _uiState.update {
+                                    it.copy(
+                                        isLoading = false,
+                                        error = "筛选器不存在"
+                                    )
+                                }
+                                Logger.e(TAG, "筛选器不存在：$recipeFilterId")
+                            }
+                        }
+                } else {
+                    _uiState.update { it.copy(isLoading = false) }
+                    Logger.d(TAG, "新建筛选器模式")
                 }
-                IngredientType.EXCLUDED -> {
-                    val included = currentState.includedIngredientIds - ingredientId
-                    val excluded = currentState.excludedIngredientIds + ingredientId
-                    _uiState.update { it.copy(includedIngredientIds = included, excludedIngredientIds = excluded) }
+
+                Logger.exit("FilterDialogViewModel.loadFilter")
+            }
+        }
+    }
+
+    /**
+     * 应用筛选
+     */
+    fun applyFilter(criteria: RecipeFilterCriteria) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+
+            PerformanceMonitor.recordMethodPerformance("applyFilter") {
+                Logger.enter("FilterDialogViewModel.applyFilter")
+
+                recipeFilterRepository.applyFilter(criteria)
+                    .collect { recipes ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                recipes = recipes
+                            )
+                        }
+                        Logger.d(TAG, "应用筛选成功：${recipes.size} 个菜谱")
+                    }
+
+                Logger.exit("FilterDialogViewModel.applyFilter")
+            }
+        }
+    }
+
+    /**
+     * 保存筛选器
+     */
+    fun saveFilter(criteria: RecipeFilterCriteria) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isSaving = true) }
+
+            PerformanceMonitor.recordMethodPerformance("saveFilter") {
+                Logger.enter("FilterDialogViewModel.saveFilter", recipeFilterId)
+
+                if (recipeFilterId != null) {
+                    recipeFilterRepository.getFilterById(recipeFilterId)
+                        .collect { filter ->
+                            if (filter != null) {
+                                val updatedFilter = filter.copy(
+                                    cookingTimeMin = criteria.cookingTimeMin,
+                                    cookingTimeMax = criteria.cookingTimeMax,
+                                    difficultyMin = criteria.difficultyMin,
+                                    difficultyMax = criteria.difficultyMax,
+                                    includedIngredients = criteria.includedIngredients.toList(),
+                                    excludedIngredients = criteria.excludedIngredients.toList(),
+                                    categoryIds = criteria.categoryIds.toList()
+                                )
+                                recipeFilterRepository.updateFilter(updatedFilter)
+                                    .onSuccess {
+                                        _uiState.update {
+                                            it.copy(
+                                                isSaving = false,
+                                                successMessage = "筛选器更新成功"
+                                            )
+                                        }
+                                        Logger.d(TAG, "更新筛选器成功：${filter.id}")
+                                    }
+                                    .onFailure { e ->
+                                        _uiState.update {
+                                            it.copy(
+                                                isSaving = false,
+                                                error = "更新失败：${e.message}"
+                                            )
+                                        }
+                                        Logger.e(TAG, "更新筛选器失败：${filter.id}", e)
+                                    }
+                            }
+                        }
+                } else {
+                    recipeFilterRepository.createFilter(criteria)
+                        .onSuccess { filter ->
+                            _uiState.update {
+                                it.copy(
+                                    isSaving = false,
+                                    successMessage = "筛选器创建成功"
+                                )
+                            }
+                            Logger.d(TAG, "创建筛选器成功：${filter.id}")
+                        }
+                        .onFailure { e ->
+                            _uiState.update {
+                                it.copy(
+                                    isSaving = false,
+                                    error = "创建失败：${e.message}"
+                                )
+                            }
+                            Logger.e(TAG, "创建筛选器失败", e)
+                        }
+                }
+
+                Logger.exit("FilterDialogViewModel.saveFilter")
+            }
+        }
+    }
+
+    /**
+     * 删除筛选器
+     */
+    fun deleteFilter() {
+        if (recipeFilterId != null) {
+            viewModelScope.launch {
+                _uiState.update { it.copy(isDeleting = true) }
+
+                PerformanceMonitor.recordMethodPerformance("deleteFilter") {
+                    Logger.enter("FilterDialogViewModel.deleteFilter", recipeFilterId)
+
+                    recipeFilterRepository.deleteFilter(recipeFilterId)
+                        .onSuccess {
+                            _uiState.update {
+                                it.copy(
+                                    isDeleting = false,
+                                    isDeleted = true,
+                                    successMessage = "筛选器删除成功"
+                                )
+                            }
+                            Logger.d(TAG, "删除筛选器成功：$recipeFilterId")
+                        }
+                        .onFailure { e ->
+                            _uiState.update {
+                                it.copy(
+                                    isDeleting = false,
+                                    error = "删除失败：${e.message}"
+                                )
+                            }
+                            Logger.e(TAG, "删除筛选器失败：$recipeFilterId", e)
+                        }
+
+                    Logger.exit("FilterDialogViewModel.deleteFilter")
                 }
             }
         }
     }
 
     /**
-     * 切换分类
+     * 清除错误消息
      */
-    fun toggleCategory(categoryId: String) {
-        viewModelScope.launch {
-            val currentState = _uiState.value
-            val selected = if (currentState.selectedCategoryIds.contains(categoryId)) {
-                currentState.selectedCategoryIds - categoryId
-            } else {
-                currentState.selectedCategoryIds + categoryId
-            }
-            _uiState.update { it.copy(selectedCategoryIds = selected) }
-        }
-    }
-
-    /**
-     * 清除选择
-     */
-    fun clearSelections() {
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    includedIngredientIds = emptySet(),
-                    excludedIngredientIds = emptySet(),
-                    selectedCategoryIds = emptySet(),
-                    searchQuery = ""
-                )
-            }
-        }
-    }
-
-    /**
-     * 清除消息
-     */
-    fun clearMessages() {
+    fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
 
     /**
-     * Filter Dialog UI State
+     * 清除成功消息
      */
-    data class FilterDialogUiState(
-        val ingredients: List<Ingredient> = emptyList(),
-        val categories: List<Category> = emptyList(),
-        val includedIngredientIds: Set<String> = emptySet(),
-        val excludedIngredientIds: Set<String> = emptySet(),
-        val selectedCategoryIds: Set<String> = emptySet(),
-        val searchQuery: String = "",
-        val isLoading: Boolean = false,
-        val error: String? = null
-    )
+    fun clearSuccessMessage() {
+        _uiState.update { it.copy(successMessage = null) }
+    }
 
-    enum class IngredientType {
-        INCLUDED, EXCLUDED
+    /**
+     * 关闭对话框
+     */
+    fun onDismiss() {
+        Logger.d(TAG, "关闭筛选对话框")
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        Logger.d(TAG, "FilterDialogViewModel onCleared")
     }
 }
+
+/**
+ * 筛选对话框 UI 状态
+ */
+data class FilterDialogUiState(
+    val isLoading: Boolean = false,
+    val isSaving: Boolean = false,
+    val isDeleting: Boolean = false,
+    val isDeleted: Boolean = false,
+    val criteria: RecipeFilterCriteria = RecipeFilterCriteria(),
+    val recipes: List<Recipe> = emptyList(),
+    val error: String? = null,
+    val successMessage: String? = null
+)
