@@ -10,7 +10,10 @@ import com.homepantry.ui.family.FamilyScreen
 import com.homepantry.ui.home.HomeScreen
 import com.homepantry.ui.ingredient.IngredientScreen
 import com.homepantry.ui.mealplan.MealPlanScreen
-import com.homepantry.ui.recipe.*
+import com.homepantry.ui.folder.FolderListScreen
+import com.homepantry.ui.folder.FolderDetailScreen
+import com.homepantry.ui.filter.FilterDialogScreen
+// import com.homepantry.ui.recipe.*
 
 sealed class Screen(val route: String) {
     object Home : Screen("home")
@@ -25,6 +28,11 @@ sealed class Screen(val route: String) {
     object Ingredients : Screen("ingredients")
     object MealPlan : Screen("mealplan")
     object Family : Screen("family")
+    object FolderList : Screen("folders")
+    object FolderDetail : Screen("folder/{folderId}") {
+        fun createRoute(folderId: String) = "folder/$folderId"
+    }
+    object FilterDialog : Screen("filter_dialog")
 }
 
 @Composable
@@ -42,6 +50,7 @@ fun AppNavigation(
                 onIngredientsClick = { navController.navigate(Screen.Ingredients.route) },
                 onMealPlanClick = { navController.navigate(Screen.MealPlan.route) },
                 onFamilyClick = { navController.navigate(Screen.Family.route) },
+                onFoldersClick = { navController.navigate(Screen.FolderList.route) },
                 onSearchClick = { navController.navigate(Screen.Recipes.route) }
             )
         }
@@ -63,8 +72,13 @@ fun AppNavigation(
             arguments = listOf(navArgument("recipeId") { type = NavType.StringType })
         ) { backStackEntry ->
             val recipeId = backStackEntry.arguments?.getString("recipeId") ?: ""
+            val database = com.homepantry.data.database.HomePantryDatabase.getDatabase(
+                androidx.compose.ui.platform.LocalContext.current
+            )
             RecipeDetailScreen(
                 recipeId = recipeId,
+                folderDao = database.folderDao(),
+                recipeFolderDao = database.recipeFolderDao(),
                 onEditClick = { navController.navigate(Screen.EditRecipe.createRoute(recipeId)) },
                 onBackClick = { navController.navigateUp() }
             )
@@ -106,5 +120,48 @@ fun AppNavigation(
                 onBackClick = { navController.navigateUp() }
             )
         }
+
+        composable(Screen.FolderList.route) {
+            // 注入 database
+            val database = com.homepantry.data.database.HomePantryDatabase.getDatabase(
+                androidx.compose.ui.platform.LocalContext.current
+            )
+            FolderListScreen(
+                folderDao = database.folderDao(),
+                onFolderClick = { folderId ->
+                    navController.navigate(Screen.FolderDetail.createRoute(folderId))
+                },
+                onCreateFolder = {
+                    // 显示创建收藏夹对话框
+                },
+                onBackClick = { navController.navigateUp() }
+            )
+        }
+
+        composable(
+            route = Screen.FolderDetail.route,
+            arguments = listOf(navArgument("folderId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
+            val database = com.homepantry.data.database.HomePantryDatabase.getDatabase(
+                androidx.compose.ui.platform.LocalContext.current
+            )
+            FolderDetailScreen(
+                folderDao = database.folderDao(),
+                recipeDao = database.recipeDao(),
+                folderId = folderId,
+                onRecipeClick = { recipeId ->
+                    navController.navigate(Screen.RecipeDetail.createRoute(recipeId))
+                },
+                onBackClick = { navController.navigateUp() }
+            )
+        }
     }
-}
+
+    composable(Screen.FilterDialog.route) {
+        FilterDialogScreen(
+            onDismiss = { navController.navigateUp() }
+        )
+    }
+
+    composable(

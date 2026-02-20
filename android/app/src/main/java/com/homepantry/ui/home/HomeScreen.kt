@@ -31,6 +31,7 @@ fun HomeScreen(
     onIngredientsClick: () -> Unit = {},
     onMealPlanClick: () -> Unit = {},
     onFamilyClick: () -> Unit = {},
+    onFoldersClick: () -> Unit = {},
     onSearchClick: () -> Unit = {}
 ) {
     Scaffold(
@@ -84,7 +85,8 @@ fun HomeScreen(
                 onRecipesClick = onRecipesClick,
                 onIngredientsClick = onIngredientsClick,
                 onMealPlanClick = onMealPlanClick,
-                onFamilyClick = onFamilyClick
+                onFamilyClick = onFamilyClick,
+                onFoldersClick = onFoldersClick
             )
 
             // Today's Recommendation Section
@@ -141,7 +143,8 @@ fun NavigationCards(
     onRecipesClick: () -> Unit,
     onIngredientsClick: () -> Unit,
     onMealPlanClick: () -> Unit,
-    onFamilyClick: () -> Unit
+    onFamilyClick: () -> Unit,
+    onFoldersClick: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -170,6 +173,12 @@ fun NavigationCards(
             label = "家庭",
             modifier = Modifier.weight(1f),
             onClick = onFamilyClick
+        )
+        NavCard(
+            icon = "⭐",
+            label = "收藏夹",
+            modifier = Modifier.weight(1f),
+            onClick = onFoldersClick
         )
     }
 }

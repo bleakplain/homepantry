@@ -8,8 +8,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Create
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.Create
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +28,8 @@ import com.homepantry.data.entity.DifficultyLevel
 import com.homepantry.data.entity.Recipe
 import com.homepantry.data.entity.RecipeIngredient
 import com.homepantry.data.entity.RecipeInstruction
+import com.homepantry.data.entity.Folder
+import com.homepantry.ui.folder.FolderChip
 import com.homepantry.ui.theme.*
 import com.homepantry.viewmodel.RecipeViewModel
 import kotlinx.coroutines.launch
@@ -33,6 +38,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun RecipeDetailScreen(
     recipeId: String,
+    folderDao: com.homepantry.data.dao.FolderDao,
+    recipeFolderDao: com.homepantry.data.dao.RecipeFolderDao,
     onEditClick: (String) -> Unit,
     onBackClick: () -> Unit,
     viewModel: RecipeViewModel = viewModel()
@@ -42,13 +49,29 @@ fun RecipeDetailScreen(
     var instructions by remember { mutableStateOf<List<RecipeInstruction>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    
+    // 收藏夹相关状态
+    var showFolderSelector by remember { mutableStateOf(false) }
+    var folderIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var folders by remember { mutableStateOf<List<com.homepantry.data.dao.FolderDao.FolderWithCount>>(emptyList()) }
 
+    // 加载菜谱所属的收藏夹
     LaunchedEffect(recipeId) {
         viewModel.selectRecipe(recipeId)
+        
+        // 加载菜谱所属的收藏夹
+        folderIds = folderDao.getFolderIdsByRecipeId(recipeId).toSet()
+        
+        // 加载所有收藏夹
+        folderDao.getAllFoldersOnce().let { folderList ->
+            folders = folderList.map { folder ->
+                com.homepantry.data.dao.FolderDao.FolderWithCount(folder, 0)
+            }
+        }
+        
         viewModel.selectedRecipe.collect { selectedRecipe ->
             if (selectedRecipe != null) {
                 recipe = selectedRecipe
-                // In a real implementation, we would fetch ingredients and instructions from repository
                 isLoading = false
             }
         }
@@ -129,6 +152,9 @@ fun RecipeDetailScreen(
                     recipe = recipe!!,
                     ingredients = ingredients,
                     instructions = instructions,
+                    folderIds = folderIds,
+                    folders = folders,
+                    onAddToFolder = { showFolderSelector = true },
                     modifier = Modifier
                         .fillMaxSize()
                         .background(Background)
@@ -137,6 +163,20 @@ fun RecipeDetailScreen(
             }
         }
     }
+
+    // Folder Selector Dialog
+    if (showFolderSelector) {
+        FolderSelectorDialog(
+            folders = folders,
+            selectedFolderIds = folderIds,
+            onDismiss = { showFolderSelector = false },
+            onConfirm = { selectedIds ->
+                // TODO: 添加到收藏夹
+                folderIds = selectedIds
+                showFolderSelector = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -144,6 +184,9 @@ fun RecipeDetailContent(
     recipe: Recipe,
     ingredients: List<RecipeIngredient>,
     instructions: List<RecipeInstruction>,
+    folderIds: Set<String>,
+    folders: List<com.homepantry.data.dao.FolderDao.FolderWithCount>,
+    onAddToFolder: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
@@ -202,6 +245,53 @@ fun RecipeDetailContent(
                             DifficultyLevel.HARD -> "困难"
                         }
                     )
+                }
+            }
+        }
+
+        // 收藏夹信息
+        item {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SectionTitle(title = "收藏夹")
+                
+                // 收藏到的收藏夹列表
+                if (folderIds.isNotEmpty()) {
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        folders.filter { folderIds.contains(it.folder.id) }
+                            .forEach { folderWithCount ->
+                                FolderChip(
+                                    folder = folderWithCount.folder,
+                                    recipeCount = folderWithCount.recipe_count
+                                )
+                            }
+                    }
+                } else {
+                    Text(
+                        text = "还未收藏到任何收藏夹",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = OnSurfaceVariant
+                    )
+                }
+                
+                // 添加到收藏夹按钮
+                FilledTonalButton(
+                    onClick = onAddToFolder,
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Create,
+                        contentDescription = "添加到收藏夹",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("收藏到收藏夹")
                 }
             }
         }
