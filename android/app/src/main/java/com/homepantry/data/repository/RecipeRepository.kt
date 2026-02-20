@@ -1,75 +1,122 @@
 package com.homepantry.data.repository
 
+import androidx.room.Transaction
+import com.homepantry.utils.Logger
+import com.homepantry.utils.PerformanceMonitor
 import com.homepantry.data.dao.RecipeDao
 import com.homepantry.data.dao.IngredientDao
 import com.homepantry.data.entity.Recipe
-import com.homepantry.data.entity.RecipeIngredient
-import com.homepantry.data.entity.RecipeInstruction
+import com.homepantry.data.entity.Ingredient
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * 菜谱仓库
+ */
 class RecipeRepository(
     private val recipeDao: RecipeDao,
     private val ingredientDao: IngredientDao
 ) {
-    fun getAllRecipes(): Flow<List<Recipe>> = recipeDao.getAllRecipes()
 
-    suspend fun getRecipeById(recipeId: String): Recipe? = recipeDao.getRecipeById(recipeId)
-
-    fun getRecipesByCategory(categoryId: String): Flow<List<Recipe>> =
-        recipeDao.getRecipesByCategory(categoryId)
-
-    fun searchRecipes(query: String): Flow<List<Recipe>> = recipeDao.searchRecipes(query)
-
-    suspend fun insertRecipe(recipe: Recipe) = recipeDao.insertRecipe(recipe)
-
-    suspend fun updateRecipe(recipe: Recipe) = recipeDao.updateRecipe(recipe)
-
-    suspend fun deleteRecipe(recipe: Recipe) = recipeDao.deleteRecipe(recipe)
-
-    suspend fun insertRecipeWithDetails(
-        recipe: Recipe,
-        ingredients: List<RecipeIngredient>,
-        instructions: List<RecipeInstruction>
-    ) {
-        recipeDao.insertRecipe(recipe)
-        ingredients.forEach { recipeDao.insertRecipeIngredient(it) }
-        instructions.forEach { recipeDao.insertRecipeInstruction(it) }
+    companion object {
+        private const val TAG = "RecipeRepository"
     }
 
-    suspend fun updateRecipeWithDetails(
-        recipe: Recipe,
-        ingredients: List<RecipeIngredient>,
-        instructions: List<RecipeInstruction>
-    ) {
-        recipeDao.updateRecipe(recipe)
-        recipeDao.deleteRecipeIngredients(recipe.id)
-        recipeDao.deleteRecipeInstructions(recipe.id)
-        ingredients.forEach { recipeDao.insertRecipeIngredient(it) }
-        instructions.forEach { recipeDao.insertRecipeInstruction(it) }
+    /**
+     * 创建菜谱
+     */
+    @Transaction
+    suspend fun createRecipe(
+        name: String,
+        description: String?,
+        ingredients: List<com.homepantry.data.entity.RecipeIngredient>
+    ): Result<Recipe> {
+        return PerformanceMonitor.recordMethodPerformance("createRecipe") {
+            Logger.enter("createRecipe", name, description, ingredients.size)
+
+            return try {
+                val recipe = Recipe(
+                    id = "recipe_${java.util.UUID.randomUUID().toString()}",
+                    name = name,
+                    description = description,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+                recipeDao.insert(recipe)
+                ingredients.forEach { ingredientDao.insert(it) }
+
+                Logger.d(TAG, "创建菜谱成功：${recipe.name}")
+                Logger.exit("createRecipe", recipe)
+                Result.success(recipe)
+            } catch (e: Exception) {
+                Logger.e(TAG, "创建菜谱失败", e)
+                Logger.exit("createRecipe")
+                Result.failure(e)
+            }
+        }
     }
 
-    suspend fun getRecipeWithDetails(recipeId: String): RecipeWithDetails? {
-        val recipe = recipeDao.getRecipeById(recipeId) ?: return null
-        val ingredients = recipeDao.getRecipeIngredients(recipeId)
-        val instructions = recipeDao.getRecipeInstructions(recipeId)
-        return RecipeWithDetails(recipe, ingredients, instructions)
+    /**
+     * 更新菜谱
+     */
+    @Transaction
+    suspend fun updateRecipe(recipe: Recipe): Result<Unit> {
+        return PerformanceMonitor.recordMethodPerformance("updateRecipe") {
+            Logger.enter("updateRecipe", recipe.id)
+
+            return try {
+                recipeDao.update(recipe.copy(updatedAt = System.currentTimeMillis()))
+
+                Logger.d(TAG, "更新菜谱成功：${recipe.name}")
+                Logger.exit("updateRecipe")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Logger.e(TAG, "更新菜谱失败：${recipe.name}", e)
+                Logger.exit("updateRecipe")
+                Result.failure(e)
+            }
+        }
     }
 
-    // Favorites
-    fun getFavoriteRecipes(): Flow<List<Recipe>> = recipeDao.getFavoriteRecipes()
+    /**
+     * 删除菜谱
+     */
+    @Transaction
+    suspend fun deleteRecipe(recipeId: String): Result<Unit> {
+        return PerformanceMonitor.recordMethodPerformance("deleteRecipe") {
+            Logger.enter("deleteRecipe", recipeId)
 
-    suspend fun toggleFavorite(recipeId: String) {
-        val recipe = recipeDao.getRecipeById(recipeId) ?: return
-        recipeDao.updateFavoriteStatus(recipeId, !recipe.isFavorite)
+            return try {
+                recipeDao.deleteById(recipeId)
+
+                Logger.d(TAG, "删除菜谱成功：$recipeId")
+                Logger.exit("deleteRecipe")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Logger.e(TAG, "删除菜谱失败：$recipeId", e)
+                Logger.exit("deleteRecipe")
+                Result.failure(e)
+            }
+        }
     }
 
-    suspend fun setFavoriteStatus(recipeId: String, isFavorite: Boolean) {
-        recipeDao.updateFavoriteStatus(recipeId, isFavorite)
+    /**
+     * 根据搜索词搜索菜谱
+     */
+    fun searchRecipes(query: String): Flow<List<Recipe>> {
+        return recipeDao.searchRecipes("%${query}%")
     }
 
-    data class RecipeWithDetails(
-        val recipe: Recipe,
-        val ingredients: List<RecipeIngredient>,
-        val instructions: List<RecipeInstruction>
-    )
+    /**
+     * 根据 ID 获取菜谱
+     */
+    fun getRecipeById(recipeId: String): Flow<Recipe?> {
+        return recipeDao.getRecipeById(recipeId)
+    }
+
+    /**
+     * 获取所有菜谱
+     */
+    fun getAllRecipes(): Flow<List<Recipe>> {
+        return recipeDao.getAllRecipes()
+    }
 }

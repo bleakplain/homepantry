@@ -1,56 +1,111 @@
 package com.homepantry.data.repository
 
+import androidx.room.Transaction
+import com.homepantry.utils.Logger
+import com.homepantry.utils.PerformanceMonitor
 import com.homepantry.data.dao.IngredientDao
-import com.homepantry.data.dao.RecipeDao
 import com.homepantry.data.entity.Ingredient
-import com.homepantry.data.entity.PantryItem
 import kotlinx.coroutines.flow.Flow
 
-class IngredientRepository(
-    private val ingredientDao: IngredientDao,
-    private val recipeDao: RecipeDao
-) {
-    fun getAllIngredients(): Flow<List<Ingredient>> = ingredientDao.getAllIngredients()
+/**
+ * 食材仓库
+ */
+class IngredientRepository(private val ingredientDao: IngredientDao) {
 
-    suspend fun getIngredientById(ingredientId: String): Ingredient? =
-        ingredientDao.getIngredientById(ingredientId)
-
-    fun searchIngredients(query: String): Flow<List<Ingredient>> =
-        ingredientDao.searchIngredients(query)
-
-    suspend fun insertIngredient(ingredient: Ingredient) = ingredientDao.insertIngredient(ingredient)
-
-    suspend fun updateIngredient(ingredient: Ingredient) = ingredientDao.updateIngredient(ingredient)
-
-    suspend fun deleteIngredient(ingredient: Ingredient) = ingredientDao.deleteIngredient(ingredient)
-
-    // Pantry items
-    fun getAllPantryItems(): Flow<List<PantryItem>> = ingredientDao.getAllPantryItems()
-
-    fun getPantryItemsWithExpiry(): Flow<List<PantryItem>> =
-        ingredientDao.getPantryItemsWithExpiry()
-
-    suspend fun getExpiringItems(expiryTime: Long): List<PantryItem> =
-        ingredientDao.getExpiringItems(expiryTime)
-
-    suspend fun addPantryItem(item: PantryItem) = ingredientDao.insertPantryItem(item)
-
-    suspend fun updatePantryItem(item: PantryItem) = ingredientDao.updatePantryItem(item)
-
-    suspend fun deletePantryItem(itemId: String) = ingredientDao.deletePantryItemById(itemId)
-
-    suspend fun removePantryItem(item: PantryItem) = ingredientDao.deletePantryItem(item)
-
-    suspend fun cleanExpiredItems() {
-        val now = System.currentTimeMillis()
-        ingredientDao.deleteExpiredItems(now)
+    companion object {
+        private const val TAG = "IngredientRepository"
     }
 
-    suspend fun getRecipeRecommendations(): List<String> {
-        // Get all pantry items and find recipes that can be made with them
-        val pantryItems = ingredientDao.getAllPantryItems()
-        // This is a simplified version - in production, you'd implement
-        // a more sophisticated matching algorithm
-        return emptyList()
+    /**
+     * 创建食材
+     */
+    @Transaction
+    suspend fun createIngredient(
+        name: String,
+        unit: String
+    ): Result<Ingredient> {
+        return PerformanceMonitor.recordMethodPerformance("createIngredient") {
+            Logger.enter("createIngredient", name, unit)
+
+            return try {
+                val ingredient = Ingredient(
+                    id = "ingredient_${java.util.UUID.randomUUID().toString()}",
+                    name = name,
+                    unit = unit,
+                    createdAt = System.currentTimeMillis()
+                )
+                ingredientDao.insert(ingredient)
+                Logger.d(TAG, "创建食材成功：${ingredient.name}")
+                Logger.exit("createIngredient", ingredient)
+                Result.success(ingredient)
+            } catch (e: Exception) {
+                Logger.e(TAG, "创建食材失败", e)
+                Logger.exit("createIngredient")
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * 更新食材
+     */
+    @Transaction
+    suspend fun updateIngredient(ingredient: Ingredient): Result<Unit> {
+        return PerformanceMonitor.recordMethodPerformance("updateIngredient") {
+            Logger.enter("updateIngredient", ingredient.id)
+
+            return try {
+                ingredientDao.update(ingredient.copy(updatedAt = System.currentTimeMillis()))
+                Logger.d(TAG, "更新食材成功：${ingredient.name}")
+                Logger.exit("updateIngredient")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Logger.e(TAG, "更新食材失败：${ingredient.name}", e)
+                Logger.exit("updateIngredient")
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * 删除食材
+     */
+    @Transaction
+    suspend fun deleteIngredient(ingredientId: String): Result<Unit> {
+        return PerformanceMonitor.recordMethodPerformance("deleteIngredient") {
+            Logger.enter("deleteIngredient", ingredientId)
+
+            return try {
+                ingredientDao.deleteById(ingredientId)
+                Logger.d(TAG, "删除食材成功：$ingredientId")
+                Logger.exit("deleteIngredient")
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Logger.e(TAG, "删除食材失败：$ingredientId", e)
+                Logger.exit("deleteIngredient")
+                Result.failure(e)
+            }
+        }
+    }
+
+    /**
+     * 根据名称搜索食材
+     */
+    fun searchIngredientsByName(query: String): Flow<List<Ingredient>> {
+        return ingredientDao.searchIngredients("%${query}%")
+    }
+
+    /**
+     * 获取所有食材
+     */
+    fun getAllIngredients(): Flow<List<Ingredient>> {
+        return ingredientDao.getAllIngredients()
+    }
+
+    /**
+     * 根据 ID 获取食材
+     */
+    fun getIngredientById(ingredientId: String): Flow<Ingredient?> {
+        return ingredientDao.getIngredientById(ingredientId)
     }
 }

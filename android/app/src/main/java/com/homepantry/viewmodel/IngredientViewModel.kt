@@ -1,123 +1,216 @@
 package com.homepantry.viewmodel
 
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.homepantry.data.entity.Ingredient
-import com.homepantry.data.entity.IngredientCategory
-import com.homepantry.data.entity.PantryItem
 import com.homepantry.data.repository.IngredientRepository
-import com.homepantry.ui.ingredient.IngredientUi
-import com.homepantry.ui.ingredient.PantryItemUi
+import com.homepantry.utils.Logger
+import com.homepantry.utils.PerformanceMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 
+/**
+ * 食材视图模型
+ */
 class IngredientViewModel(
-    private val repository: IngredientRepository
-) : BaseViewModel() {
+    private val ingredientRepository: IngredientRepository
+) : ViewModel() {
 
-    private val _pantryItems = MutableStateFlow<List<PantryItemUi>>(emptyList())
-    val pantryItems: StateFlow<List<PantryItemUi>> = _pantryItems.asStateFlow()
+    companion object {
+        private const val TAG = "IngredientViewModel"
+    }
 
-    private val _allIngredients = MutableStateFlow<List<IngredientUi>>(emptyList())
-    val allIngredients: StateFlow<List<IngredientUi>> = _allIngredients.asStateFlow()
+    private val _uiState = MutableStateFlow(IngredientUiState())
+    val uiState: StateFlow<IngredientUiState> = _uiState.asStateFlow()
 
     init {
-        loadPantryItems()
-        loadAllIngredients()
+        Logger.d(TAG, "IngredientViewModel init")
+        loadIngredients()
     }
 
-    private fun loadPantryItems() {
+    /**
+     * 加载所有食材
+     */
+    private fun loadIngredients() {
         viewModelScope.launch {
-            setLoading(true)
-            try {
-                repository.getPantryItems().collect { items ->
-                    _pantryItems.value = items.map { it.toPantryItemUi() }
-                    setLoading(false)
-                }
-            } catch (e: Exception) {
-                setError("加载食材箱失败: ${e.message}")
-                setLoading(false)
+            _uiState.update { it.copy(isLoading = true) }
+
+            PerformanceMonitor.recordMethodPerformance("loadIngredients") {
+                Logger.enter("IngredientViewModel.loadIngredients")
+
+                ingredientRepository.getAllIngredients()
+                    .collect { ingredients ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                ingredients = ingredients
+                            )
+                        }
+                    }
+
+                Logger.exit("IngredientViewModel.loadIngredients")
             }
         }
     }
 
-    private fun loadAllIngredients() {
-        launchInBackground {
-            repository.getAllIngredients().collect { ingredients ->
-                _allIngredients.value = ingredients.map { it.toIngredientUi() }
-            }
-        }
-    }
-
-    fun addPantryItem(
+    /**
+     * 创建食材
+     */
+    fun createIngredient(
         name: String,
-        quantity: Double,
-        unit: String,
-        expiryDays: Int?
+        unit: String
     ) {
-        execute("食材添加成功") {
-            val ingredient = Ingredient(
-                id = generateId(),
-                name = name,
-                unit = unit,
-                category = IngredientCategory.OTHER
-            )
-            repository.addIngredient(ingredient)
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
 
-            val pantryItem = PantryItem(
-                id = generateId(),
-                ingredientId = ingredient.id,
-                quantity = quantity,
-                expiryDate = expiryDays?.let { System.currentTimeMillis() + it * 24 * 60 * 60 * 1000L }
-            )
-            repository.addPantryItem(pantryItem)
+            PerformanceMonitor.recordMethodPerformance("createIngredient") {
+                Logger.enter("IngredientViewModel.createIngredient", name, unit)
+
+                ingredientRepository.createIngredient(name, unit)
+                    .onSuccess { ingredient ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                ingredients = it.ingredients + ingredient,
+                                successMessage = "食材创建成功"
+                            )
+                        }
+                        Logger.d("IngredientViewModel.createIngredient", "食材创建成功")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "创建失败：${e.message}"
+                            )
+                        }
+                        Logger.e("IngredientViewModel.createIngredient", "创建失败", e)
+                    }
+            }
         }
     }
 
-    fun deletePantryItem(itemId: String) {
-        execute("食材删除成功") {
-            repository.deletePantryItem(itemId)
+    /**
+     * 更新食材
+     */
+    fun updateIngredient(ingredient: Ingredient) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+
+            PerformanceMonitor.recordMethodPerformance("updateIngredient") {
+                Logger.enter("IngredientViewModel.updateIngredient", ingredient.id)
+
+                ingredientRepository.updateIngredient(ingredient)
+                    .onSuccess {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                ingredients = it.ingredients.map { if (it.id == ingredient.id) ingredient else it },
+                                successMessage = "食材更新成功"
+                            )
+                        }
+                        Logger.d("IngredientViewModel.updateIngredient", "食材更新成功")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "更新失败：${e.message}"
+                            )
+                        }
+                        Logger.e("IngredientViewModel.updateIngredient", "食材更新失败", e)
+                    }
+            }
         }
     }
 
-    private fun generateId(): String {
-        return System.currentTimeMillis().toString()
+    /**
+     * 删除食材
+     */
+    fun deleteIngredient(ingredientId: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+
+            PerformanceMonitor.recordMethodPerformance("deleteIngredient") {
+                Logger.enter("IngredientViewModel.deleteIngredient", ingredientId)
+
+                ingredientRepository.deleteIngredient(ingredientId)
+                    .onSuccess {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                ingredients = it.ingredients.filter { it.id != ingredientId },
+                                successMessage = "删除成功"
+                            )
+                        }
+                        Logger.d("IngredientViewModel.deleteIngredient", "食材删除成功：$ingredientId")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "删除失败：${e.message}"
+                            )
+                        }
+                        Logger.e("IngredientViewModel.deleteIngredient", "食材删除失败：$ingredientId", e)
+                    }
+            }
+        }
+    }
+
+    /**
+     * 搜索食材
+     */
+    fun searchIngredients(query: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+
+            PerformanceMonitor.recordMethodPerformance("searchIngredients") {
+                Logger.enter("IngredientViewModel.searchIngredients", query)
+
+                ingredientRepository.searchIngredientsByName(query)
+                    .collect { ingredients ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                ingredients = ingredients
+                            )
+                        }
+                        Logger.d("IngredientViewModel.searchIngredients", "搜索食材成功：${ingredients.size} 个")
+                    }
+
+                Logger.exit("IngredientViewModel.searchIngredients")
+            }
+        }
+    }
+
+    /**
+     * 清除错误消息
+     */
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
+    }
+
+    /**
+     * 清除成功消息
+     */
+    fun clearSuccessMessage() {
+        _uiState.update { it.copy(successMessage = null) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        Logger.d(TAG, "IngredientViewModel onCleared")
     }
 }
 
-fun PantryItem.toPantryItemUi(ingredientName: String = "", icon: String = "🥕"): PantryItemUi {
-    return PantryItemUi(
-        id = id,
-        name = ingredientName,
-        quantity = quantity,
-        unit = unit,
-        expiryDays = expiryDate?.let {
-            val days = ((it - System.currentTimeMillis()) / (24 * 60 * 60 * 1000)).toInt()
-            days
-        },
-        icon = icon
-    )
-}
-
-fun Ingredient.toIngredientUi(): IngredientUi {
-    return IngredientUi(
-        id = id,
-        name = name,
-        category = category,
-        icon = getCategoryIcon(category)
-    )
-}
-
-fun getCategoryIcon(category: IngredientCategory): String {
-    return when (category) {
-        IngredientCategory.VEGETABLE -> "🥬"
-        IngredientCategory.FRUIT -> "🍎"
-        IngredientCategory.MEAT -> "🥩"
-        IngredientCategory.SEAFOOD -> "🐟"
-        IngredientCategory.DAIRY -> "🥛"
-        IngredientCategory.GRAIN -> "🌾"
-        IngredientCategory.SPICE -> "🧂"
-        IngredientCategory.SAUCE -> "🫙"
-        IngredientCategory.OTHER -> "🥕"
-    }
-}
+/**
+ * 食材 UI 状态
+ */
+data class IngredientUiState(
+    val isLoading: Boolean = false,
+    val ingredients: List<Ingredient> = emptyList(),
+    val error: String? = null,
+    val successMessage: String? = null
+)
