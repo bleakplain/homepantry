@@ -7,6 +7,8 @@ import com.homepantry.data.dao.RecipeDao
 import com.homepantry.data.dao.IngredientDao
 import com.homepantry.data.entity.Recipe
 import com.homepantry.data.entity.Ingredient
+import com.homepantry.data.entity.RecipeIngredient
+import com.homepantry.data.constants.Constants
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -31,7 +33,7 @@ class RecipeRepository(
         ingredients: List<com.homepantry.data.entity.RecipeIngredient>
     ): Result<Recipe> {
         return PerformanceMonitor.recordMethodPerformance("createRecipe") {
-            Logger.enter("createRecipe", name, description, ingredients.size)
+            Logger.enter("RecipeRepository.createRecipe", name, description, ingredients.size)
 
             return try {
                 val recipe = Recipe(
@@ -45,11 +47,11 @@ class RecipeRepository(
                 ingredients.forEach { ingredientDao.insert(it) }
 
                 Logger.d(TAG, "创建菜谱成功：${recipe.name}")
-                Logger.exit("createRecipe", recipe)
+                Logger.exit("RecipeRepository.createRecipe", recipe)
                 Result.success(recipe)
             } catch (e: Exception) {
                 Logger.e(TAG, "创建菜谱失败", e)
-                Logger.exit("createRecipe")
+                Logger.exit("RecipeRepository.createRecipe")
                 Result.failure(e)
             }
         }
@@ -61,17 +63,17 @@ class RecipeRepository(
     @Transaction
     suspend fun updateRecipe(recipe: Recipe): Result<Unit> {
         return PerformanceMonitor.recordMethodPerformance("updateRecipe") {
-            Logger.enter("updateRecipe", recipe.id)
+            Logger.enter("RecipeRepository.updateRecipe", recipe.id)
 
             return try {
                 recipeDao.update(recipe.copy(updatedAt = System.currentTimeMillis()))
 
                 Logger.d(TAG, "更新菜谱成功：${recipe.name}")
-                Logger.exit("updateRecipe")
+                Logger.exit("RecipeRepository.updateRecipe")
                 Result.success(Unit)
             } catch (e: Exception) {
                 Logger.e(TAG, "更新菜谱失败：${recipe.name}", e)
-                Logger.exit("updateRecipe")
+                Logger.exit("RecipeRepository.updateRecipe")
                 Result.failure(e)
             }
         }
@@ -83,17 +85,17 @@ class RecipeRepository(
     @Transaction
     suspend fun deleteRecipe(recipeId: String): Result<Unit> {
         return PerformanceMonitor.recordMethodPerformance("deleteRecipe") {
-            Logger.enter("deleteRecipe", recipeId)
+            Logger.enter("RecipeRepository.deleteRecipe", recipeId)
 
             return try {
                 recipeDao.deleteById(recipeId)
 
                 Logger.d(TAG, "删除菜谱成功：$recipeId")
-                Logger.exit("deleteRecipe")
+                Logger.exit("RecipeRepository.deleteRecipe")
                 Result.success(Unit)
             } catch (e: Exception) {
                 Logger.e(TAG, "删除菜谱失败：$recipeId", e)
-                Logger.exit("deleteRecipe")
+                Logger.exit("RecipeRepository.deleteRecipe")
                 Result.failure(e)
             }
         }
@@ -102,7 +104,7 @@ class RecipeRepository(
     /**
      * 根据搜索词搜索菜谱
      */
-    fun searchRecipes(query: String): Flow<List<Recipe>> {
+    fun searchRecipes(query: String): Flow<List<Recipe>>> {
         return recipeDao.searchRecipes("%${query}%")
     }
 
@@ -116,7 +118,21 @@ class RecipeRepository(
     /**
      * 获取所有菜谱
      */
-    fun getAllRecipes(): Flow<List<Recipe>> {
+    fun getAllRecipes(): Flow<List<Recipe>>> {
         return recipeDao.getAllRecipes()
+    }
+
+    /**
+     * 根据分类 ID 获取菜谱
+     */
+    fun getRecipesByCategory(categoryId: String): Flow<List<Recipe>>> {
+        return recipeDao.getRecipesByCategory(categoryId)
+    }
+
+    /**
+     * 根据食材 ID 获取菜谱
+     */
+    fun getRecipesByIngredient(ingredientId: String): Flow<List<Recipe>>> {
+        return recipeDao.getRecipesByIngredient(ingredientId)
     }
 }

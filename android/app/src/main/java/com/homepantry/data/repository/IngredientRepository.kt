@@ -32,7 +32,8 @@ class IngredientRepository(private val ingredientDao: IngredientDao) {
                     id = "ingredient_${java.util.UUID.randomUUID().toString()}",
                     name = name,
                     unit = unit,
-                    createdAt = System.currentTimeMillis()
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
                 )
                 ingredientDao.insert(ingredient)
                 Logger.d(TAG, "创建食材成功：${ingredient.name}")
@@ -91,14 +92,14 @@ class IngredientRepository(private val ingredientDao: IngredientDao) {
     /**
      * 根据名称搜索食材
      */
-    fun searchIngredientsByName(query: String): Flow<List<Ingredient>> {
+    fun searchIngredientsByName(query: String): Flow<List<Ingredient>>> {
         return ingredientDao.searchIngredients("%${query}%")
     }
 
     /**
      * 获取所有食材
      */
-    fun getAllIngredients(): Flow<List<Ingredient>> {
+    fun getAllIngredients(): Flow<List<Ingredient>>> {
         return ingredientDao.getAllIngredients()
     }
 
@@ -107,5 +108,12 @@ class IngredientRepository(private val ingredientDao: IngredientDao) {
      */
     fun getIngredientById(ingredientId: String): Flow<Ingredient?> {
         return ingredientDao.getIngredientById(ingredientId)
+    }
+
+    /**
+     * 获取常用食材
+     */
+    fun getFrequentlyUsedIngredients(limit: Int = 10): Flow<List<Ingredient>>> {
+        return ingredientDao.getFrequentlyUsedIngredients(limit)
     }
 }

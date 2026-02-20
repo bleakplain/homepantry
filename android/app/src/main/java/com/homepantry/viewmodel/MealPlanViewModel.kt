@@ -62,7 +62,7 @@ class MealPlanViewModel(
         meals: List<MealPlanItem>
     ) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
 
             PerformanceMonitor.recordMethodPerformance("createMealPlan") {
                 Logger.enter("MealPlanViewModel.createMealPlan", name, meals.size)
@@ -98,7 +98,7 @@ class MealPlanViewModel(
      */
     fun deleteMealPlan(mealPlanId: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
+            _uiState.update { it.copy(isLoading = true, error = null) }
 
             PerformanceMonitor.recordMethodPerformance("deleteMealPlan") {
                 Logger.enter("MealPlanViewModel.deleteMealPlan", mealPlanId)
@@ -112,7 +112,7 @@ class MealPlanViewModel(
                                 successMessage = "删除成功"
                             )
                         }
-                        Logger.d(TAG, "食谱计划删除成功：$mealPlanId")
+                        Logger.d(TAG, "删除成功：$mealPlanId")
                     }
                     .onFailure { e ->
                         _uiState.update {
@@ -121,7 +121,7 @@ class MealPlanViewModel(
                                 error = "删除失败：${e.message}"
                             )
                         }
-                        Logger.e(TAG, "食谱计划删除失败：$mealPlanId", e)
+                        Logger.e(TAG, "删除失败：$mealPlanId", e)
                     }
 
                 Logger.exit("MealPlanViewModel.deleteMealPlan")
