@@ -2,166 +2,114 @@ package com.homepantry.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.homepantry.data.repository.ExpirationRepository
-import com.homepantry.data.entity.ExpirationReminder
-import com.homepantry.data.entity.ExpirationNotification
 import com.homepantry.data.entity.ExpirationCheckResult
-import com.homepantry.data.entity.ExpirationSummary
-import kotlinx.coroutines.flow.*
+import com.homepantry.data.entity.ReminderConfig
+import com.homepantry.data.repository.ExpirationRepository
+import com.homepantry.utils.Logger
+import com.homepantry.utils.PerformanceMonitor
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 过期检查 ViewModel
+ * 过期提醒视图模型
  */
 class ExpirationViewModel(
-    private val expirationRepo: ExpirationRepository
+    private val expirationRepository: ExpirationRepository
 ) : ViewModel() {
+
+    companion object {
+        private const val TAG = "ExpirationViewModel"
+    }
 
     private val _uiState = MutableStateFlow(ExpirationUiState())
     val uiState: StateFlow<ExpirationUiState> = _uiState.asStateFlow()
 
-    init {
-        loadReminders()
-        loadNotifications()
-    }
-
-    /**
-     * 加载过期提醒
-     */
-    private fun loadReminders() {
-        viewModelScope.launch {
-            expirationRepo.getAllReminders()
-                .catch { e ->
-                    _uiState.update { state ->
-                        state.copy(
-                            error = "加载过期提醒失败：${e.message}"
-                        )
-                    }
-                }
-                .collect { reminders ->
-                    _uiState.update { it.copy(expirationReminders = reminders) }
-                }
-        }
-    }
-
-    /**
-     * 加载过期通知
-     */
-    private fun loadNotifications() {
-        viewModelScope.launch {
-            expirationRepo.getNotificationHistory()
-                .catch { e ->
-                    _uiState.update { state ->
-                        state.copy(
-                            error = "加载过期通知失败：${e.message}"
-                        )
-                    }
-                }
-                .collect { notifications ->
-                    _uiState.update { it.copy(expirationNotifications = notifications) }
-                }
-        }
-    }
-
     /**
      * 检查过期食材
      */
-    fun checkExpiration(reminderDays: Int = 3) {
+    fun checkExpiringItems(reminderDays: Int) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isChecking = true, error = null) }
+            _uiState.update { it.copy(isLoading = true) }
 
-            val results = expirationRepo.checkExpiringItems(reminderDays)
-            val summary = ExpirationSummary.fromResults(results)
+            PerformanceMonitor.recordMethodPerformance("checkExpiringItems") {
+                Logger.enter("ExpirationViewModel.checkExpiringItems", reminderDays)
 
-            _uiState.update {
-                it.copy(
-                    expirationCheckResults = results,
-                    expirationSummary = summary,
-                    isChecking = false
-                )
+                expirationRepository.checkExpiringItems(reminderDays)
+                    .collect { results ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                checkResults = results
+                            )
+                        }
+                        Logger.d(TAG, "检查过期食材完成：${results.size} 个")
+                    }
+
+                Logger.exit("ExpirationViewModel.checkExpiringItems")
             }
         }
     }
 
     /**
-     * 保存过期提醒配置
+     * 创建过期提醒
      */
-    fun saveReminderConfig(
-        pantryItemId: String,
-        reminderDays: Int = 3,
-        reminderTime: String = "08:00",
-        reminderFrequency: ExpirationReminder.ReminderFrequency = ExpirationReminder.ReminderFrequency.DAILY,
-        notificationEnabled: Boolean = true
-    ) {
+    fun createReminder(pantryItemId: String, config: ReminderConfig) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, error = null) }
+            _uiState.update { it.copy(isLoading = true) }
 
-            val config = com.homepantry.data.entity.ReminderConfig(
-                reminderDays = reminderDays,
-                reminderTime = reminderTime,
-                reminderFrequency = reminderFrequency,
-                notificationEnabled = notificationEnabled
-            )
+            PerformanceMonitor.recordMethodPerformance("createReminder") {
+                Logger.enter("ExpirationViewModel.createReminder", pantryItemId, config.reminderDays)
 
-            expirationRepo.createReminder(pantryItemId, config)
-                .onSuccess {
-                    _uiState.update { state ->
-                        state.copy(
-                            isSaving = false,
-                            successMessage = "过期提醒配置已保存"
-                        )
+                expirationRepository.createReminder(pantryItemId, config)
+                    .onSuccess { reminder ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                reminders = it.reminders + reminder,
+                                successMessage = "过期提醒创建成功"
+                            )
+                        }
+                        Logger.d(TAG, "过期提醒创建成功：${reminder.id}")
                     }
-                }
-                .onFailure { e ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isSaving = false,
-                            error = "保存失败：${e.message}"
-                        )
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "创建失败：${e.message}"
+                            )
+                        }
+                        Logger.e(TAG, "过期提醒创建失败", e)
                     }
-                }
+
+                Logger.exit("ExpirationViewModel.createReminder")
+            }
         }
     }
 
     /**
-     * 更新过期提醒
+     * 获取通知历史
      */
-    fun updateReminder(reminder: ExpirationReminder) {
+    fun getNotificationHistory() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isSaving = true, error = null) }
+            _uiState.update { it.copy(isLoading = true) }
 
-            expirationRepo.updateReminder(reminder)
-                .onSuccess {
-                    _uiState.update { state ->
-                        state.copy(
-                            isSaving = false,
-                            successMessage = "过期提醒配置已更新"
-                        )
-                    }
-                }
-                .onFailure { e ->
-                    _uiState.update { state ->
-                        state.copy(
-                            isSaving = false,
-                            error = "更新失败：${e.message}"
-                        )
-                    }
-                }
-        }
-    }
+            PerformanceMonitor.recordMethodPerformance("getNotificationHistory") {
+                Logger.enter("ExpirationViewModel.getNotificationHistory")
 
-    /**
-     * 删除过期提醒
-     */
-    fun deleteReminder(reminderId: String) {
-        viewModelScope.launch {
-            expirationRepo.deleteReminder(reminderId)
-                .onSuccess {
-                    _uiState.update { it.copy(successMessage = "过期提醒已删除") }
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = "删除失败：${e.message}") }
-                }
+                expirationRepository.getNotificationHistory()
+                    .collect { notifications ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                notifications = notifications
+                            )
+                        }
+                        Logger.d(TAG, "获取通知历史：${notifications.size} 个")
+                    }
+
+                Logger.exit("ExpirationViewModel.getNotificationHistory")
+            }
         }
     }
 
@@ -170,23 +118,19 @@ class ExpirationViewModel(
      */
     fun markNotificationAsRead(notificationId: String) {
         viewModelScope.launch {
-            expirationRepo.markNotificationAsRead(notificationId)
-                .onSuccess {
-                    _uiState.update { state ->
-                        state.copy(
-                            expirationNotifications = state.expirationNotifications.map { notif ->
-                                if (notif.id == notificationId) {
-                                    notif.copy(isRead = true)
-                                } else {
-                                    notif
-                                }
-                            }
-                        )
+            PerformanceMonitor.recordMethodPerformance("markNotificationAsRead") {
+                Logger.enter("ExpirationViewModel.markNotificationAsRead", notificationId)
+
+                expirationRepository.markNotificationAsRead(notificationId)
+                    .onSuccess {
+                        Logger.d(TAG, "标记通知为已读：$notificationId")
                     }
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = "标记失败：${e.message}") }
-                }
+                    .onFailure { e ->
+                        Logger.e(TAG, "标记通知为已读失败：$notificationId", e)
+                    }
+
+                Logger.exit("ExpirationViewModel.markNotificationAsRead")
+            }
         }
     }
 
@@ -195,59 +139,50 @@ class ExpirationViewModel(
      */
     fun markNotificationAsHandled(notificationId: String) {
         viewModelScope.launch {
-            expirationRepo.markNotificationAsHandled(notificationId)
-                .onSuccess {
-                    _uiState.update { state ->
-                        state.copy(
-                            expirationNotifications = state.expirationNotifications.map { notif ->
-                                if (notif.id == notificationId) {
-                                    notif.copy(isHandled = true)
-                                } else {
-                                    notif
-                                }
-                            }
-                        )
+            PerformanceMonitor.recordMethodPerformance("markNotificationAsHandled") {
+                Logger.enter("ExpirationViewModel.markNotificationAsHandled", notificationId)
+
+                expirationRepository.markNotificationAsHandled(notificationId)
+                    .onSuccess {
+                        Logger.d(TAG, "标记通知为已处理：$notificationId")
                     }
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = "标记失败：${e.message}") }
-                }
+                    .onFailure { e ->
+                        Logger.e(TAG, "标记通知为已处理失败：$notificationId", e)
+                    }
+
+                Logger.exit("ExpirationViewModel.markNotificationAsHandled")
+            }
         }
     }
 
     /**
-     * 清除已处理通知
+     * 清除错误消息
      */
-    fun clearProcessedNotifications() {
-        viewModelScope.launch {
-            expirationRepo.clearProcessedNotifications()
-                .onSuccess { count ->
-                    _uiState.update { it.copy(successMessage = "已清除 $count 个已处理通知") }
-                }
-                .onFailure { e ->
-                    _uiState.update { it.copy(error = "清除失败：${e.message}") }
-                }
-        }
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     /**
-     * 清除消息
+     * 清除成功消息
      */
-    fun clearMessages() {
-        _uiState.update { it.copy(error = null, successMessage = null) }
+    fun clearSuccessMessage() {
+        _uiState.update { it.copy(successMessage = null) }
     }
 
-    /**
-     * Expiration UI State
-     */
-    data class ExpirationUiState(
-        val expirationReminders: List<ExpirationReminder> = emptyList(),
-        val expirationNotifications: List<ExpirationNotification> = emptyList(),
-        val expirationCheckResults: List<ExpirationCheckResult> = emptyList(),
-        val expirationSummary: ExpirationSummary? = null,
-        val isChecking: Boolean = false,
-        val isSaving: Boolean = false,
-        val error: String? = null,
-        val successMessage: String? = null
-    )
+    override fun onCleared() {
+        super.onCleared()
+        Logger.d(TAG, "ExpirationViewModel onCleared")
+    }
 }
+
+/**
+ * 过期提醒 UI 状态
+ */
+data class ExpirationUiState(
+    val isLoading: Boolean = false,
+    val checkResults: List<ExpirationCheckResult> = emptyList(),
+    val reminders: List<com.homepantry.data.entity.ExpirationReminder> = emptyList(),
+    val notifications: List<com.homepantry.data.entity.ExpirationNotification> = emptyList(),
+    val error: String? = null,
+    val successMessage: String? = null
+)

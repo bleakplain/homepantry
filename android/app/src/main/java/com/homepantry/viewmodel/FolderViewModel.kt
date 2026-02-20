@@ -2,20 +2,30 @@ package com.homepantry.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.homepantry.data.dao.FolderDao
 import com.homepantry.data.entity.Folder
-import kotlinx.coroutines.flow.*
+import com.homepantry.data.repository.FolderRepository
+import com.homepantry.utils.Logger
+import com.homepantry.utils.PerformanceMonitor
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
- * 收藏夹列表 ViewModel
+ * 收藏夹视图模型
  */
-class FolderViewModel(private val folderDao: FolderDao) : ViewModel() {
+class FolderViewModel(
+    private val folderRepository: FolderRepository
+) : ViewModel() {
+
+    companion object {
+        private const val TAG = "FolderViewModel"
+    }
 
     private val _uiState = MutableStateFlow(FolderUiState())
     val uiState: StateFlow<FolderUiState> = _uiState.asStateFlow()
 
     init {
+        Logger.d(TAG, "FolderViewModel init")
         loadFolders()
     }
 
@@ -24,46 +34,69 @@ class FolderViewModel(private val folderDao: FolderDao) : ViewModel() {
      */
     private fun loadFolders() {
         viewModelScope.launch {
-            folderDao.getAllFoldersWithCount()
-                .catch { e ->
-                    _uiState.update { it.copy(error = e.message) }
-                }
-                .collect { folders ->
-                    _uiState.update { it.copy(folders = folders, isLoading = false) }
-                }
+            _uiState.update { it.copy(isLoading = true) }
+
+            PerformanceMonitor.recordMethodPerformance("loadFolders") {
+                folderRepository.getAllFolders()
+                    .collect { folderWithCountList ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                folders = folderWithCountList.map { folderWithCount ->
+                                    FolderUiModel(
+                                        id = folderWithCount.folder.id,
+                                        name = folderWithCount.folder.name,
+                                        icon = folderWithCount.folder.icon,
+                                        color = folderWithCount.folder.color,
+                                        sortOrder = folderWithCount.folder.sortOrder,
+                                        recipeCount = folderWithCount.recipe_count,
+                                        isSystem = folderWithCount.folder.isSystem
+                                    )
+                                },
+                                error = null
+                            )
+                        }
+                    }
+            }
         }
     }
 
     /**
      * 创建收藏夹
      */
-    fun createFolder(name: String, icon: String?, color: String?) {
+    fun createFolder(
+        name: String,
+        icon: String? = null,
+        color: String? = null
+    ) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            // 验证
-            if (name.length < 2) {
-                _uiState.update { it.copy(isLoading = false, error = "名称不能少于2个字符") }
-                return@launch
-            }
-            if (name.length > 20) {
-                _uiState.update { it.copy(isLoading = false, error = "名称不能超过20个字符") }
-                return@launch
-            }
+            PerformanceMonitor.recordMethodPerformance("createFolder") {
+                Logger.enter("FolderViewModel.createFolder", name, icon, color)
 
-            try {
-                val maxSortOrder = folderDao.getMaxSortOrder() ?: -1
-                val folder = Folder(
-                    id = java.util.UUID.randomUUID().toString(),
-                    name = name,
-                    icon = icon,
-                    color = color,
-                    sortOrder = maxSortOrder + 1
-                )
-                folderDao.insert(folder)
-                _uiState.update { it.copy(isLoading = false, successMessage = "收藏夹创建成功") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "创建失败：${e.message}") }
+                folderRepository.createFolder(name, icon, color)
+                    .onSuccess { folder ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                folders = it.folders + folder,
+                                successMessage = "文件夹创建成功"
+                            )
+                        }
+                        Logger.d(TAG, "文件夹创建成功：${folder.name}")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "创建失败：${e.message}"
+                            )
+                        }
+                        Logger.e(TAG, "文件夹创建失败", e)
+                    }
+
+                Logger.exit("FolderViewModel.createFolder")
             }
         }
     }
@@ -75,11 +108,31 @@ class FolderViewModel(private val folderDao: FolderDao) : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            try {
-                folderDao.update(folder.copy(updatedAt = System.currentTimeMillis()))
-                _uiState.update { it.copy(isLoading = false, successMessage = "收藏夹更新成功") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "更新失败：${e.message}") }
+            PerformanceMonitor.recordMethodPerformance("updateFolder") {
+                Logger.enter("FolderViewModel.updateFolder", folder.id)
+
+                folderRepository.updateFolder(folder)
+                    .onSuccess {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                folders = it.folders.map { if (it.id == folder.id) folder else it },
+                                successMessage = "文件夹更新成功"
+                            )
+                        }
+                        Logger.d(TAG, "文件夹更新成功：${folder.name}")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "更新失败：${e.message}"
+                            )
+                        }
+                        Logger.e(TAG, "文件夹更新失败", e)
+                    }
+
+                Logger.exit("FolderViewModel.updateFolder")
             }
         }
     }
@@ -91,11 +144,31 @@ class FolderViewModel(private val folderDao: FolderDao) : ViewModel() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
 
-            try {
-                folderDao.deleteById(folderId)
-                _uiState.update { it.copy(isLoading = false, successMessage = "收藏夹删除成功") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "删除失败：${e.message}") }
+            PerformanceMonitor.recordMethodPerformance("deleteFolder") {
+                Logger.enter("FolderViewModel.deleteFolder", folderId)
+
+                folderRepository.deleteFolder(folderId)
+                    .onSuccess {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                folders = it.folders.filter { it.id != folderId },
+                                successMessage = "文件夹删除成功"
+                            )
+                        }
+                        Logger.d(TAG, "文件夹删除成功：$folderId")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "删除失败：${e.message}"
+                            )
+                        }
+                        Logger.e(TAG, "文件夹删除失败", e)
+                    }
+
+                Logger.exit("FolderViewModel.deleteFolder")
             }
         }
     }
@@ -105,31 +178,78 @@ class FolderViewModel(private val folderDao: FolderDao) : ViewModel() {
      */
     fun reorderFolders(folderIds: List<String>) {
         viewModelScope.launch {
-            try {
-                folderIds.forEachIndexed { index, folderId ->
-                    folderDao.updateSortOrder(folderId, index)
-                }
-                _uiState.update { it.copy(successMessage = "排序更新成功") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = "排序失败：${e.message}") }
+            _uiState.update { it.copy(isLoading = true, error = null) }
+
+            PerformanceMonitor.recordMethodPerformance("reorderFolders") {
+                Logger.enter("FolderViewModel.reorderFolders", folderIds.size)
+
+                folderRepository.reorderFolders(folderIds)
+                    .onSuccess {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                folders = folderIds.mapNotNull { folderId ->
+                                    it.folders.find { folder -> folder.id == folderId }
+                                },
+                                successMessage = "文件夹重新排序成功"
+                            )
+                        }
+                        Logger.d(TAG, "文件夹重新排序成功：${folderIds.size} 个")
+                    }
+                    .onFailure { e ->
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                error = "重新排序失败：${e.message}"
+                            )
+                        }
+                        Logger.e(TAG, "文件夹重新排序失败", e)
+                    }
+
+                Logger.exit("FolderViewModel.reorderFolders")
             }
         }
     }
 
     /**
-     * 清除错误和成功消息
+     * 清除错误消息
      */
-    fun clearMessages() {
-        _uiState.update { it.copy(error = null, successMessage = null) }
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     /**
-     * 收藏夹 UI 状态
+     * 清除成功消息
      */
-    data class FolderUiState(
-        val isLoading: Boolean = true,
-        val folders: List<FolderDao.FolderWithCount> = emptyList(),
-        val error: String? = null,
-        val successMessage: String? = null
-    )
+    fun clearSuccessMessage() {
+        _uiState.update { it.copy(successMessage = null) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        Logger.d(TAG, "FolderViewModel onCleared")
+    }
 }
+
+/**
+ * 收藏夹 UI 状态
+ */
+data class FolderUiState(
+    val isLoading: Boolean = false,
+    val folders: List<FolderUiModel> = emptyList(),
+    val error: String? = null,
+    val successMessage: String? = null
+)
+
+/**
+ * 收藏夹 UI 模型
+ */
+data class FolderUiModel(
+    val id: String,
+    val name: String,
+    val icon: String?,
+    val color: String?,
+    val sortOrder: Int,
+    val recipeCount: Int,
+    val isSystem: Boolean
+)
