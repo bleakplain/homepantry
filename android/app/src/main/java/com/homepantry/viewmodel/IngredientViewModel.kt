@@ -47,6 +47,7 @@ class IngredientViewModel(
                                 ingredients = ingredients
                             )
                         }
+                        Logger.d(TAG, "加载食材成功：${ingredients.size} 个")
                     }
 
                 Logger.exit("IngredientViewModel.loadIngredients")
@@ -87,6 +88,8 @@ class IngredientViewModel(
                         }
                         Logger.e("IngredientViewModel.createIngredient", "创建失败", e)
                     }
+
+                Logger.exit("IngredientViewModel.createIngredient")
             }
         }
     }
@@ -121,6 +124,8 @@ class IngredientViewModel(
                         }
                         Logger.e("IngredientViewModel.updateIngredient", "食材更新失败", e)
                     }
+
+                Logger.exit("IngredientViewModel.updateIngredient")
             }
         }
     }
@@ -155,6 +160,8 @@ class IngredientViewModel(
                         }
                         Logger.e("IngredientViewModel.deleteIngredient", "食材删除失败：$ingredientId", e)
                     }
+
+                Logger.exit("IngredientViewModel.deleteIngredient")
             }
         }
     }
